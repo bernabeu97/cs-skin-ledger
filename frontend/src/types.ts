@@ -127,3 +127,15 @@ export interface PriceConfigView {
   youpinDirectEnabled: boolean
   messages: Record<string, string>
 }
+
+export interface PriceAlert {
+  id: number
+  itemId: number
+  itemName: string
+  itemNameZh: string | null
+  platform: string
+  condition: 'gt' | 'lt'
+  threshold: number
+  enabled: boolean
+  triggeredAt: string | null
+}

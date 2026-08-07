@@ -17,6 +17,7 @@ import com.cs.skinledger.repository.PriceSnapshotRepository;
 import com.cs.skinledger.repository.UserRepository;
 import com.cs.skinledger.service.price.PriceProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 /**
  * 行情服务：刷新平台价格快照、计算持仓估值（浮动盈亏）。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PriceService {
@@ -44,6 +46,7 @@ public class PriceService {
     private final LotRepository lotRepository;
     private final ItemRepository itemRepository;
     private final PriceSnapshotRepository snapshotRepository;
+    private final AlertService alertService;
     private final AppPriceProperties props;
     private final UserRepository userRepository;
     private final List<PriceProvider> providers;
@@ -82,6 +85,10 @@ public class PriceService {
         }
 
         int saved = saveQuotes(quotes);
+        List<com.cs.skinledger.dto.AlertResponse> triggered = alertService.check(quotes);
+        if (!triggered.isEmpty()) {
+            log.info("行情刷新后触发价格提醒 {} 条", triggered.size());
+        }
         for (PriceQuote q : quotes) {
             byPlatform.merge(q.platform(), 1, Integer::sum);
         }
@@ -136,6 +143,11 @@ public class PriceService {
                     latestPrices));
         }
         return new PortfolioValuation(holdingCost, marketValue, unrealized, priceAsOf, rows);
+    }
+
+    /** 是否存在至少一个可用数据源 */
+    public boolean hasAvailableSource() {
+        return providers.stream().anyMatch(PriceProvider::available);
     }
 
     public PriceConfigView config() {

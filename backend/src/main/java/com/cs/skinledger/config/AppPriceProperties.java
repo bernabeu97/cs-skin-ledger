@@ -17,6 +17,10 @@ public class AppPriceProperties {
     private boolean refreshOnStartup = false;
     /** 默认刷新平台：uu,steam,buff */
     private String defaultSources = "uu,steam,buff";
+    /** 自动刷新间隔（分钟），0 表示关闭定时刷新 */
+    private long refreshIntervalMinutes = 360;
+    /** 启动后首次自动刷新的延迟（秒） */
+    private long refreshInitialDelaySeconds = 300;
 
     @Data
     public static class Csqaq {

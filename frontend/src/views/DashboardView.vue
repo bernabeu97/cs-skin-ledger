@@ -3,10 +3,13 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PnlChart from '../components/PnlChart.vue'
 import { useLotsStore } from '../stores/lots'
+import { useAlertsStore } from '../stores/alerts'
+import ItemSelect from '../components/ItemSelect.vue'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
-import type { HoldingValuation } from '../types'
+import type { HoldingValuation, Item } from '../types'
 
 const store = useLotsStore()
+const alertsStore = useAlertsStore()
 const router = useRouter()
 
 const PERIODS = [
@@ -19,6 +22,11 @@ const period = ref<'month' | 'week' | 'day' | 'year'>('month')
 const refreshing = ref(false)
 const refreshingPrices = ref(false)
 const priceMessage = ref('')
+const alertItem = ref<Item | null>(null)
+const alertPlatform = ref('uu')
+const alertCondition = ref<'gt' | 'lt'>('gt')
+const alertThreshold = ref<number | null>(null)
+const alertBusy = ref(false)
 
 const periodLabel = computed(() => PERIODS.find(p => p.v === period.value)?.label ?? '月度')
 
@@ -53,7 +61,8 @@ async function loadAll() {
       store.loadPnl(period.value),
       store.loadLots({ status: 'HOLDING' }),
       store.loadValuation(),
-      store.loadPriceConfig()
+      store.loadPriceConfig(),
+      alertsStore.loadAlerts()
     ])
   } finally {
     refreshing.value = false
@@ -83,6 +92,26 @@ async function refreshPrices() {
     priceMessage.value = String(e)
   } finally {
     refreshingPrices.value = false
+  }
+}
+
+async function addAlert() {
+  if (!alertItem.value || alertThreshold.value == null || !(alertThreshold.value > 0)) return
+  alertBusy.value = true
+  try {
+    await alertsStore.createAlert({
+      itemId: alertItem.value.id,
+      platform: alertPlatform.value,
+      condition: alertCondition.value,
+      threshold: alertThreshold.value
+    })
+    alertItem.value = null
+    alertThreshold.value = null
+    priceMessage.value = '价格提醒已添加'
+  } catch (e) {
+    priceMessage.value = '添加提醒失败：' + String(e)
+  } finally {
+    alertBusy.value = false
   }
 }
 
@@ -228,6 +257,68 @@ onMounted(loadAll)
       <p>当前没有待卖出的持仓，去饰品账本录入买入。</p>
       <router-link to="/trades" class="btn btn-primary">前往饰品账本</router-link>
     </div>
+    <h2>价格提醒</h2>
+    <div class="alert-bar">
+      <ItemSelect v-model="alertItem" placeholder="搜索要提醒的饰品（支持中文）" />
+      <select v-model="alertPlatform" class="input" style="width:auto">
+        <option value="uu">UU</option>
+        <option value="steam">Steam</option>
+        <option value="buff">BUFF</option>
+      </select>
+      <select v-model="alertCondition" class="input" style="width:auto">
+        <option value="gt">价格高于</option>
+        <option value="lt">价格低于</option>
+      </select>
+      <input
+        v-model.number="alertThreshold"
+        class="input"
+        type="number"
+        min="0.01"
+        step="0.01"
+        placeholder="阈值(元)"
+        style="width:120px"
+      />
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="alertBusy || !alertItem || alertThreshold == null || !(alertThreshold > 0)"
+        @click="addAlert"
+      >{{ alertBusy ? '添加中…' : '添加提醒' }}</button>
+    </div>
+    <div v-if="alertsStore.error" class="error-banner">
+      <span>{{ alertsStore.error }}</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>饰品</th><th>平台</th><th>条件</th><th class="num-head">阈值</th><th>状态</th><th></th>
+          </tr>
+        </thead>
+        <tbody v-if="alertsStore.loading">
+          <tr><td colspan="6"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
+        </tbody>
+        <tbody v-else>
+          <tr v-for="a in alertsStore.alerts" :key="a.id">
+            <td>{{ a.itemNameZh ?? a.itemName }}</td>
+            <td><span class="badge badge-muted mono">{{ a.platform }}</span></td>
+            <td>{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
+            <td class="num">{{ formatMoney(a.threshold) }}</td>
+            <td>
+              <span v-if="a.triggeredAt" class="badge badge-accent">已触发 {{ formatDateTime(a.triggeredAt) }}</span>
+              <span v-else class="badge badge-muted">监控中</span>
+            </td>
+            <td class="row-actions">
+              <button type="button" class="btn btn-ghost btn-sm" @click="alertsStore.resetAlert(a.id)">重置</button>
+              <button type="button" class="btn btn-ghost btn-sm danger-text" @click="alertsStore.deleteAlert(a.id)">删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="!alertsStore.loading && alertsStore.alerts.length === 0" class="empty-state compact">
+      <p>还没有价格提醒。添加后，每次“刷新行情”会自动检查是否触发。</p>
+    </div>
   </div>
 </template>
 
@@ -253,6 +344,10 @@ table.data td.up { color: var(--success); font-weight: 600; }
 table.data td.down { color: var(--danger); font-weight: 600; }
 .text-muted { color: var(--text-muted); }
 .row-actions { text-align: right; white-space: nowrap; }
+.alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.alert-bar .item-select { flex: 1; min-width: 220px; }
+.danger-text { color: var(--danger) !important; }
+.empty-state.compact { padding: 12px; }
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
 }

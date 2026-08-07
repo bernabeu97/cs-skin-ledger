@@ -50,10 +50,14 @@ class TradeControllerTest {
     @Autowired
     private ItemRepository itemRepository;
 
+    @Autowired
+    private com.cs.skinledger.repository.AlertRepository alertRepository;
+
     @BeforeEach
     void cleanDatabase() {
         tradeRepository.deleteAll();
         lotRepository.deleteAll();
+        alertRepository.deleteAll();
         itemRepository.deleteAll();
     }
 

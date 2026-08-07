@@ -35,7 +35,9 @@ app:
       enabled: false
       token-file: work/uu_token.txt
       timeout-seconds: 12
-    # 启动时是否自动刷新一次持有批次的行情（建议手动触发，避免被限流）
-    refresh-on-startup: false
     # 默认刷新平台：uu,steam,buff（来自 CSQAQ 时一次请求即可全部拿到）
     default-sources: uu,steam,buff
+    # 定时刷新间隔（分钟），0 表示关闭；建议配置 CSQAQ 后再开启，避免被限流
+    refresh-interval-minutes: 0
+    # 启动后首次自动刷新延迟（秒）
+    refresh-initial-delay-seconds: 300
