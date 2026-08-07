@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, type TradeQuery } from '../api/client'
+import { api, errorMessage, type TradeQuery } from '../api/client'
 import { downloadBlob } from '../utils/format'
 import type { HoldingRow, ImportResult, PnlRow, Trade, TradeCreateRequest } from '../types'
 
@@ -11,7 +11,10 @@ export const useTradesStore = defineStore('trades', () => {
   const totalCost = ref(0)
   const totalRealizedPnl = ref(0)
   const loading = ref(false)
+  const loadingPortfolio = ref(false)
+  const loadingPnl = ref(false)
   const error = ref('')
+  const dashError = ref('')
 
   async function loadTrades(query: TradeQuery = {}) {
     loading.value = true
@@ -20,26 +23,42 @@ export const useTradesStore = defineStore('trades', () => {
       const { data } = await api.get<Trade[]>('/trades', { params: query })
       trades.value = data
     } catch (e) {
-      error.value = String(e)
+      error.value = errorMessage(e)
     } finally {
       loading.value = false
     }
   }
 
   async function loadPortfolio() {
-    const { data } = await api.get<{
-      totalCost: number
-      totalRealizedPnl: number
-      holdings: HoldingRow[]
-    }>('/analytics/portfolio')
-    totalCost.value = data.totalCost
-    totalRealizedPnl.value = data.totalRealizedPnl
-    holdings.value = data.holdings
+    loadingPortfolio.value = true
+    dashError.value = ''
+    try {
+      const { data } = await api.get<{
+        totalCost: number
+        totalRealizedPnl: number
+        holdings: HoldingRow[]
+      }>('/analytics/portfolio')
+      totalCost.value = data.totalCost
+      totalRealizedPnl.value = data.totalRealizedPnl
+      holdings.value = data.holdings
+    } catch (e) {
+      dashError.value = errorMessage(e)
+    } finally {
+      loadingPortfolio.value = false
+    }
   }
 
   async function loadPnl(groupBy: string) {
-    const { data } = await api.get<PnlRow[]>('/analytics/pnl', { params: { group_by: groupBy } })
-    pnlRows.value = data
+    loadingPnl.value = true
+    dashError.value = ''
+    try {
+      const { data } = await api.get<PnlRow[]>('/analytics/pnl', { params: { group_by: groupBy } })
+      pnlRows.value = data
+    } catch (e) {
+      dashError.value = errorMessage(e)
+    } finally {
+      loadingPnl.value = false
+    }
   }
 
   async function createTrade(payload: TradeCreateRequest) {
@@ -70,7 +89,8 @@ export const useTradesStore = defineStore('trades', () => {
   }
 
   return {
-    trades, holdings, pnlRows, totalCost, totalRealizedPnl, loading, error,
+    trades, holdings, pnlRows, totalCost, totalRealizedPnl,
+    loading, loadingPortfolio, loadingPnl, error, dashError,
     loadTrades, loadPortfolio, loadPnl, createTrade, updateTrade, deleteTrade,
     importCsv, exportTrades
   }

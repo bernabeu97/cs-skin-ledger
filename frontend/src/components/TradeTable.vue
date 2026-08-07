@@ -1,46 +1,61 @@
 <script setup lang="ts">
 import type { Trade } from '../types'
+import { formatDateTime, formatMoney, formatQty } from '../utils/format'
 
-defineProps<{ trades: Trade[] }>()
+defineProps<{ trades: Trade[]; loading: boolean }>()
 const emit = defineEmits<{ (e: 'edit', t: Trade): void; (e: 'delete', t: Trade): void }>()
+
+const platformLabel: Record<string, string> = { steam: 'Steam', uu: 'UU', buff: 'BUFF' }
 </script>
 
 <template>
-  <table>
-    <thead>
-      <tr>
-        <th>时间</th><th>饰品</th><th>平台</th><th>方向</th><th>数量</th>
-        <th>单价</th><th>总额</th><th>手续费</th><th>状态</th><th>备注</th><th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="t in trades" :key="t.id">
-        <td>{{ t.tradedAt.replace('T', ' ') }}</td>
-        <td>{{ t.itemName }}</td>
-        <td>{{ t.platform }}</td>
-        <td :class="t.direction === 'BUY' ? 'buy' : 'sell'">
-          {{ t.direction === 'BUY' ? '买入' : '卖出' }}
-        </td>
-        <td>{{ t.quantity }}</td>
-        <td>{{ t.unitPrice }}</td>
-        <td>{{ t.totalAmount }}</td>
-        <td>{{ t.fee }}</td>
-        <td>{{ t.status }}</td>
-        <td>{{ t.note }}</td>
-        <td>
-          <button @click="emit('edit', t)">编辑</button>
-          <button @click="emit('delete', t)">删除</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>时间</th><th>饰品</th><th>平台</th><th>方向</th><th>数量</th>
+          <th class="num">单价</th><th class="num">总额</th><th class="num">手续费</th>
+          <th>状态</th><th>备注</th><th></th>
+        </tr>
+      </thead>
+      <tbody v-if="loading">
+        <tr v-for="i in 6" :key="i">
+          <td colspan="11"><div class="skeleton" style="height:14px;width:100%"></div></td>
+        </tr>
+      </tbody>
+      <tbody v-else>
+        <tr v-for="t in trades" :key="t.id">
+          <td class="mono">{{ formatDateTime(t.tradedAt) }}</td>
+          <td>{{ t.itemName }}</td>
+          <td><span class="badge badge-muted mono">{{ platformLabel[t.platform] ?? t.platform }}</span></td>
+          <td>
+            <span class="badge" :class="t.direction === 'BUY' ? 'badge-success' : 'badge-danger'">
+              {{ t.direction === 'BUY' ? '买入' : '卖出' }}
+            </span>
+          </td>
+          <td class="num">{{ formatQty(t.quantity) }}</td>
+          <td class="num">{{ formatMoney(t.unitPrice) }}</td>
+          <td class="num">{{ formatMoney(t.totalAmount) }}</td>
+          <td class="num">{{ formatMoney(t.fee) }}</td>
+          <td>
+            <span class="badge" :class="t.status === 'COMPLETED' ? 'badge-success' : 'badge-muted'">
+              {{ t.status === 'COMPLETED' ? '已完成' : '进行中' }}
+            </span>
+          </td>
+          <td :title="t.note ?? ''" class="note-cell">{{ t.note }}</td>
+          <td class="row-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click="emit('edit', t)">编辑</button>
+            <button type="button" class="btn btn-ghost btn-sm danger-text" @click="emit('delete', t)">删除</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <style scoped>
-table { width: 100%; border-collapse: collapse; background: #fff; }
-th, td { border: 1px solid #e2e2e8; padding: 8px; text-align: left; font-size: 14px; }
-th { background: #f0f1f4; }
-.buy { color: #0a7d33; }
-.sell { color: #c00; }
-button { margin-right: 4px; }
+.note-cell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.row-actions { text-align: right; white-space: nowrap; }
+.danger-text { color: var(--danger); }
+.danger-text:hover { background: var(--danger-soft); }
 </style>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import type { Trade, TradeCreateRequest } from '../types'
 
-const props = defineProps<{ editing: Trade | null }>()
+const props = defineProps<{ editing: Trade | null; saving: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved', payload: TradeCreateRequest): void
@@ -25,7 +25,31 @@ const form = reactive({
   note: props.editing?.note ?? ''
 })
 
+const errors = reactive<{ itemName?: string; quantity?: string; unitPrice?: string; tradedAt?: string }>({})
+const firstField = ref<HTMLInputElement | null>(null)
+
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') emit('close')
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKey)
+  firstField.value?.focus()
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+function validate(): boolean {
+  errors.itemName = form.itemName.trim() ? undefined : '请输入饰品名称'
+  const qty = Number(form.quantity)
+  errors.quantity = !form.quantity || Number.isNaN(qty) || qty <= 0 ? '数量必须大于 0' : undefined
+  const price = Number(form.unitPrice)
+  errors.unitPrice = !form.unitPrice || Number.isNaN(price) || price < 0 ? '单价不能为负' : undefined
+  errors.tradedAt = form.tradedAt ? undefined : '请选择成交时间'
+  return !errors.itemName && !errors.quantity && !errors.unitPrice && !errors.tradedAt
+}
+
 function submit() {
+  if (props.saving || !validate()) return
   const tradedAt = form.tradedAt.length === 16 ? form.tradedAt + ':00' : form.tradedAt
   emit('saved', {
     itemName: form.itemName.trim(),
@@ -45,54 +69,121 @@ function submit() {
 </script>
 
 <template>
-  <div class="mask">
-    <div class="panel">
-      <h2>{{ props.editing ? '编辑交易' : '新增交易' }}</h2>
-      <div class="grid">
-        <label>饰品名称<input v-model="form.itemName" /></label>
-        <label>平台
-          <select v-model="form.platform">
-            <option value="steam">Steam</option>
-            <option value="uu">UU</option>
-            <option value="buff">BUFF</option>
-          </select>
-        </label>
-        <label>方向
-          <select v-model="form.direction">
-            <option value="BUY">买入</option>
-            <option value="SELL">卖出</option>
-          </select>
-        </label>
-        <label>数量<input v-model="form.quantity" type="number" step="0.0001" min="0.0001" /></label>
-        <label>单价<input v-model="form.unitPrice" type="number" step="0.0001" min="0" /></label>
-        <label>手续费<input v-model="form.fee" type="number" step="0.0001" min="0" /></label>
-        <label>费率 %<input v-model="form.feeRate" type="number" step="0.000001" min="0" /></label>
-        <label>币种<input v-model="form.currency" /></label>
-        <label>成交时间<input v-model="form.tradedAt" type="datetime-local" /></label>
-        <label>平台单号<input v-model="form.externalTradeId" /></label>
-        <label>状态
-          <select v-model="form.status">
-            <option value="COMPLETED">已完成</option>
-            <option value="PENDING">进行中</option>
-          </select>
-        </label>
-        <label class="wide">备注<input v-model="form.note" /></label>
-      </div>
-      <div class="actions">
-        <button class="primary" @click="submit">保存</button>
-        <button @click="emit('close')">取消</button>
-      </div>
+  <div class="dialog-mask" @click.self="emit('close')">
+    <div class="dialog-panel form-panel" role="dialog" aria-modal="true" aria-label="交易表单">
+      <form novalidate @submit.prevent="submit">
+        <div class="form-header">
+          <h2>{{ props.editing ? '编辑交易' : '新增交易' }}</h2>
+          <button type="button" class="close-btn" aria-label="关闭" @click="emit('close')">×</button>
+        </div>
+
+        <div class="grid">
+          <div class="field wide">
+            <span>饰品名称 <i class="req">*</i></span>
+            <input ref="firstField" v-model="form.itemName" class="input" placeholder="如 AK-47 | Redline (Field-Tested)" @input="errors.itemName = undefined" />
+            <p v-if="errors.itemName" class="field-error">{{ errors.itemName }}</p>
+          </div>
+
+          <div class="field">
+            <span>平台</span>
+            <select v-model="form.platform" class="select">
+              <option value="steam">Steam</option>
+              <option value="uu">UU</option>
+              <option value="buff">BUFF</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <span>方向</span>
+            <select v-model="form.direction" class="select">
+              <option value="BUY">买入</option>
+              <option value="SELL">卖出</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <span>数量 <i class="req">*</i></span>
+            <input v-model="form.quantity" class="input" type="number" step="0.0001" min="0.0001" @input="errors.quantity = undefined" />
+            <p v-if="errors.quantity" class="field-error">{{ errors.quantity }}</p>
+          </div>
+
+          <div class="field">
+            <span>单价 <i class="req">*</i></span>
+            <input v-model="form.unitPrice" class="input" type="number" step="0.0001" min="0" @input="errors.unitPrice = undefined" />
+            <p v-if="errors.unitPrice" class="field-error">{{ errors.unitPrice }}</p>
+          </div>
+
+          <div class="field">
+            <span>手续费</span>
+            <input v-model="form.fee" class="input" type="number" step="0.0001" min="0" />
+          </div>
+
+          <div class="field">
+            <span>费率 %</span>
+            <input v-model="form.feeRate" class="input" type="number" step="0.000001" min="0" />
+          </div>
+
+          <div class="field">
+            <span>币种</span>
+            <input v-model="form.currency" class="input" />
+          </div>
+
+          <div class="field">
+            <span>成交时间 <i class="req">*</i></span>
+            <input v-model="form.tradedAt" class="input" type="datetime-local" @input="errors.tradedAt = undefined" />
+            <p v-if="errors.tradedAt" class="field-error">{{ errors.tradedAt }}</p>
+          </div>
+
+          <div class="field">
+            <span>平台单号</span>
+            <input v-model="form.externalTradeId" class="input mono" />
+          </div>
+
+          <div class="field">
+            <span>状态</span>
+            <select v-model="form.status" class="select">
+              <option value="COMPLETED">已完成</option>
+              <option value="PENDING">进行中</option>
+            </select>
+          </div>
+
+          <div class="field wide">
+            <span>备注</span>
+            <input v-model="form.note" class="input" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn" :disabled="props.saving" @click="emit('close')">取消</button>
+          <button type="submit" class="btn btn-primary" :disabled="props.saving">
+            {{ props.saving ? '保存中…' : '保存' }}
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
 
 <style scoped>
-.mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-.panel { background: #fff; padding: 20px 24px; border-radius: 8px; width: 560px; max-height: 90vh; overflow: auto; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.grid .wide { grid-column: 1 / -1; }
-input, select { padding: 6px 8px; }
-.actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
-.primary { background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; }
+.form-panel { padding: 0; }
+.form-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 12px; border-bottom: 1px solid var(--border);
+}
+.form-header h2 { margin: 0; }
+.close-btn {
+  border: none; background: none; font-size: 20px; line-height: 1; color: var(--text-muted);
+  cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
+}
+.close-btn:hover { color: var(--text); background: rgba(16,24,40,.06); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px 20px; }
+.field .req { font-style: normal; }
+.form-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-muted);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+}
 </style>

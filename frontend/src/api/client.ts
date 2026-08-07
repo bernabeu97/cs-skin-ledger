@@ -10,3 +10,11 @@ export interface TradeQuery {
   q?: string
   category?: string
 }
+
+export function errorMessage(e: unknown): string {
+  if (axios.isAxiosError(e)) {
+    const data = e.response?.data as { message?: string } | undefined
+    return data?.message || e.message
+  }
+  return String(e)
+}
