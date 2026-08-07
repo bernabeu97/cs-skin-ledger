@@ -85,3 +85,45 @@ export interface ImportResult {
   failed: number
   errors: string[]
 }
+
+// ===== 行情模块（M2/M3）=====
+export interface HoldingValuation {
+  lotId: number
+  itemId: number
+  itemName: string
+  itemNameZh: string | null
+  exterior: string | null
+  quantity: number
+  buyPrice: number
+  currentPrice: number | null
+  pricePlatform: 'uu' | 'steam' | 'buff' | null
+  priceAt: string | null
+  marketValue: number | null
+  unrealizedPnl: number | null
+  latestPrices: Record<string, number>
+}
+
+export interface PortfolioValuation {
+  holdingCost: number
+  marketValue: number
+  unrealizedPnl: number
+  priceAsOf: string | null
+  rows: HoldingValuation[]
+}
+
+export interface PriceRefreshResult {
+  startedAt: string
+  finishedAt: string
+  requested: number
+  ok: number
+  failed: number
+  errors: string[]
+  byPlatform: Record<string, number>
+}
+
+export interface PriceConfigView {
+  csqaqConfigured: boolean
+  steamDirectEnabled: boolean
+  youpinDirectEnabled: boolean
+  messages: Record<string, string>
+}

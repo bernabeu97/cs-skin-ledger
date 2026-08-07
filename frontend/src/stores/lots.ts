@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
 import { downloadBlob } from '../utils/format'
-import type { Lot, LotCreateRequest, LotSellRequest, LotSummary, PnlRow } from '../types'
+import type { Lot, LotCreateRequest, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult } from '../types'
 
 export interface LotQuery {
   q?: string
@@ -75,6 +75,49 @@ export const useLotsStore = defineStore('lots', () => {
     await api.delete(`/lots/${id}`)
   }
 
+  // ===== 行情模块 =====
+  const valuation = ref<PortfolioValuation | null>(null)
+  const priceConfig = ref<PriceConfigView | null>(null)
+  const refreshingPrices = ref(false)
+  const loadingValuation = ref(false)
+
+  async function loadValuation() {
+    loadingValuation.value = true
+    try {
+      const { data } = await api.get<PortfolioValuation>('/prices/valuation')
+      valuation.value = data
+    } catch (e) {
+      dashError.value = errorMessage(e)
+    } finally {
+      loadingValuation.value = false
+    }
+  }
+
+  async function loadPriceConfig() {
+    try {
+      const { data } = await api.get<PriceConfigView>('/prices/config')
+      priceConfig.value = data
+    } catch {
+      // 配置接口失败不阻塞页面
+    }
+  }
+
+  async function refreshPrices(platforms?: string): Promise<PriceRefreshResult> {
+    refreshingPrices.value = true
+    try {
+      const { data } = await api.post<PriceRefreshResult>('/prices/refresh', null, {
+        params: platforms ? { platforms } : undefined
+      })
+      await Promise.all([loadValuation(), loadSummary()])
+      return data
+    } catch (e) {
+      dashError.value = errorMessage(e)
+      throw e
+    } finally {
+      refreshingPrices.value = false
+    }
+  }
+
   async function exportLots(format: 'csv' | 'json' | 'xlsx') {
     const { data } = await api.get<Blob>('/lots/export', {
       params: { format },
@@ -85,6 +128,8 @@ export const useLotsStore = defineStore('lots', () => {
 
   return {
     lots, summary, pnlRows, loading, loadingSummary, loadingPnl, error, dashError,
-    loadLots, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, exportLots
+    valuation, priceConfig, refreshingPrices, loadingValuation,
+    loadLots, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, exportLots,
+    loadValuation, loadPriceConfig, refreshPrices
   }
 })
