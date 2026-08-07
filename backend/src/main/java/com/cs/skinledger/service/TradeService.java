@@ -103,7 +103,9 @@ public class TradeService {
             Position p = e.getValue();
             totalCost = totalCost.add(p.remainingCost());
             totalRealized = totalRealized.add(p.realizedPnl());
-            holdings.add(new HoldingRow(item.getMarketHashName(), p.remainingQty(), p.avgCost(), p.realizedPnl(), null));
+            if (p.remainingQty().signum() > 0) {
+                  holdings.add(new HoldingRow(item.getMarketHashName(), p.remainingQty(), p.avgCost(), p.realizedPnl(), null));
+              }
         }
         return new PortfolioView(totalCost, totalRealized, holdings);
     }
