@@ -92,3 +92,21 @@ Invoke-RestMethod -Uri 'http://localhost:8080/api/prices/import-market-ids?dir=w
 - Steam 直连在本机网络超时，优先使用 CSQAQ 的 steamSellPrice。
 - CSQAQ 的 UU/BUFF 价格为整数元粒度。
 - CSQAQ ApiToken 绑定本机 IP，多人部署时各环境需各自配置。
+
+## Docker 部署（多人访问版）
+
+项目根目录提供 `docker-compose.yml`（MySQL 8 + 后端 + 前端 Nginx，前端 80 端口）：
+
+```powershell
+# 1. 设置环境变量后启动（MYSQL_ROOT_PASSWORD 必填）
+$env:MYSQL_ROOT_PASSWORD="你的root密码"
+$env:DB_PASSWORD="ledger_pass"          # 生产请改
+$env:CSQAQ_TOKEN="你的Token"            # 可选，配置后才有行情
+docker compose up -d --build
+
+# 2. 访问 http://服务器IP/
+```
+
+- 后端 API 由 Nginx 反代到 8080，前端静态文件由 Nginx 托管（SPA 路由已配置）。
+- 数据卷 `mysql_data` 持久化数据库；升级后重新 `docker compose up -d --build` 即可，Flyway 自动迁移。
+- 注意：CSQAQ ApiToken 绑定注册时的 IP 白名单，部署环境需各自注册/绑定。
