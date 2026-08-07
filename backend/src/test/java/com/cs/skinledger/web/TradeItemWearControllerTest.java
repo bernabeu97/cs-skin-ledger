@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -90,5 +91,25 @@ class TradeItemWearControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void searchTradesByChineseName() throws Exception {
+        saveItem("AK-47 | Redline");
+        mockMvc.perform(post("/api/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "itemName", "AK-47 | Redline",
+                                "platform", "steam",
+                                "direction", "BUY",
+                                "quantity", 1,
+                                "unitPrice", 100,
+                                "fee", 0,
+                                "tradedAt", "2026-01-05T10:00:00"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/trades").param("q", "红线"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
     }
 }

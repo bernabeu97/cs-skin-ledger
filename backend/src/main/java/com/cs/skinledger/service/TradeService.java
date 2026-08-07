@@ -172,7 +172,10 @@ public class TradeService {
                 ps.add(cb.lessThanOrEqualTo(root.get("tradedAt"), f.to()));
             }
             if (f.q() != null && !f.q().isBlank()) {
-                ps.add(cb.like(root.get("item").get("marketHashName"), "%" + f.q() + "%"));
+                String pattern = "%" + f.q() + "%";
+                ps.add(cb.or(
+                        cb.like(root.get("item").get("marketHashName"), pattern),
+                        cb.like(root.get("item").get("nameZh"), pattern)));
             }
             if (f.category() != null && !f.category().isBlank()) {
                 ps.add(cb.equal(root.get("item").get("category"), f.category()));

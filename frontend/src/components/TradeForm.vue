@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { getItem } from '../api/client'
 import ItemSelect from './ItemSelect.vue'
 import type { Item, Trade, TradeCreateRequest } from '../types'
+import { formatMoney } from '../utils/format'
 
 const DEFAULT_WEARS = ['崭新出厂', '略有磨损', '久经沙场', '破损不堪', '战痕累累']
 
@@ -57,6 +58,13 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
+const totalPreview = computed(() => {
+  const qty = Number(form.quantity)
+  const price = Number(form.unitPrice)
+  const fee = Number(form.fee) || 0
+  if (!qty || qty <= 0 || Number.isNaN(price) || price < 0) return null
+  return qty * price + fee
+})
 const wearOptions = ref<string[]>(DEFAULT_WEARS)
 watch(selectedItem, (item) => {
   if (item?.minFloat != null) {
@@ -200,6 +208,7 @@ function submit() {
             <div class="field">
               <span>磨损值（0-1）</span>
               <input v-model="form.floatValue" class="input num" type="number" step="0.0001" min="0" max="1" placeholder="如 0.1234" />
+              <p class="field-hint" v-if="selectedItem?.minFloat != null">磨损区间 {{ selectedItem.minFloat }} - {{ selectedItem.maxFloat }}</p>
             </div>
           </template>
 
@@ -210,10 +219,15 @@ function submit() {
         </div>
 
         <div class="form-actions">
-          <button type="button" class="btn" :disabled="props.saving" @click="emit('close')">取消</button>
-          <button type="submit" class="btn btn-primary" :disabled="props.saving">
-            {{ props.saving ? '保存中…' : '保存' }}
-          </button>
+          <div class="total-preview" v-if="totalPreview !== null">
+            合计 ≈ <b class="num">{{ formatMoney(totalPreview) }} {{ form.currency }}</b>
+          </div>
+          <div class="actions-right">
+            <button type="button" class="btn" :disabled="props.saving" @click="emit('close')">取消</button>
+            <button type="submit" class="btn btn-primary" :disabled="props.saving">
+              {{ props.saving ? '保存中…' : '保存' }}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -234,8 +248,11 @@ function submit() {
 .close-btn:hover { color: var(--text); background: rgba(16,24,40,.06); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px 20px; }
 .field .req { font-style: normal; }
+.field-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
+.total-preview { font-size: 13px; color: var(--text-secondary); align-self: center; }
+.actions-right { display: flex; gap: 8px; }
 .form-actions {
-  display: flex; gap: 8px; justify-content: flex-end;
+  display: flex; gap: 8px; justify-content: space-between; align-items: center;
   padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-muted);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }

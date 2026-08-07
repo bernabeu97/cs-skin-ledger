@@ -68,6 +68,12 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+function clear() {
+  emit('update:modelValue', null)
+  text.value = ''
+  open.value = false
+}
+
 function onFocus() {
   if (text.value.trim()) doSearch(text.value)
 }
@@ -89,13 +95,14 @@ onBeforeUnmount(() => window.clearTimeout(timer))
   <div class="item-select" @mousedown="onMouseDown" @mouseup="onMouseUp">
     <input
       v-model="text"
-      class="input"
+      class="input has-clear"
       :placeholder="placeholder ?? '输入关键词搜索饰品（支持中文）'"
       @input="onInput"
       @keydown="onKey"
       @focus="onFocus"
       @blur="onBlur"
     />
+    <button v-if="modelValue" type="button" class="clear-btn" aria-label="清除选择" @mousedown.prevent @click="clear">×</button>
     <div v-if="open" class="dropdown">
       <div v-if="loading" class="hint">搜索中…</div>
       <div v-else-if="results.length === 0" class="hint">无匹配结果，可继续输入自定义名称</div>
@@ -118,6 +125,13 @@ onBeforeUnmount(() => window.clearTimeout(timer))
 
 <style scoped>
 .item-select { position: relative; }
+.input.has-clear { padding-right: 28px; }
+.clear-btn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: none; background: none; color: var(--text-muted); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 2px 5px; border-radius: 4px; z-index: 2;
+}
+.clear-btn:hover { color: var(--text); background: rgba(16,24,40,.06); }
 .dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);

@@ -16,6 +16,7 @@
   <description>CS 饰品买卖统计系统后端</description>
   <properties>
     <java.version>21</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
   <dependencies>
     <dependency>

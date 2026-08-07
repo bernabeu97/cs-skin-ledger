@@ -4,7 +4,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PnlRow } from '../types'
 import { formatMoney, formatSignedMoney } from '../utils/format'
 
-const props = defineProps<{ rows: PnlRow[]; loading: boolean }>()
+const props = defineProps<{ rows: PnlRow[]; loading: boolean; periodLabel: string }>()
 const el = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
@@ -17,7 +17,7 @@ function render() {
       trigger: 'axis',
       valueFormatter: (value: unknown) => formatMoney(Number(value))
     },
-    grid: { left: 48, right: 20, top: 24, bottom: 32 },
+    grid: { left: 48, right: 20, top: 28, bottom: 32 },
     xAxis: {
       type: 'category',
       data: props.rows.map(r => r.key),
@@ -66,8 +66,8 @@ onBeforeUnmount(() => {
   <div class="card chart-card">
     <div class="chart-head">
       <div>
-        <h2>月度已实现盈亏</h2>
-        <span class="chart-sub">单位：CNY · 数据来自交易账本</span>
+        <h2>{{ periodLabel }}已实现盈亏</h2>
+        <span class="chart-sub">单位：CNY · 已扣除手续费</span>
       </div>
     </div>
     <div v-if="loading" class="chart-body">
@@ -75,7 +75,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="rows.length === 0" class="chart-body empty-state">
       <div class="empty-icon" aria-hidden="true">📈</div>
-      <p>暂无盈亏数据，先去「交易记录」录入交易。</p>
+      <p>该周期暂无盈亏数据，先去「交易记录」录入交易。</p>
     </div>
     <div v-else ref="el" class="chart-body"></div>
   </div>
