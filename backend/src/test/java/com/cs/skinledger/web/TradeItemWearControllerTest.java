@@ -37,9 +37,13 @@ class TradeItemWearControllerTest {
     @Autowired
     private ItemRepository itemRepository;
 
+    @Autowired
+    private com.cs.skinledger.repository.LotRepository lotRepository;
+
     @BeforeEach
     void cleanDatabase() {
         tradeRepository.deleteAll();
+        lotRepository.deleteAll();
         itemRepository.deleteAll();
     }
 

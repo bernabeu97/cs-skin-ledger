@@ -2,10 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PnlChart from '../components/PnlChart.vue'
-import { useTradesStore } from '../stores/trades'
-import { formatMoney, formatQty, formatSignedMoney } from '../utils/format'
+import { useLotsStore } from '../stores/lots'
+import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
 
-const store = useTradesStore()
+const store = useLotsStore()
 const router = useRouter()
 
 const PERIODS = [
@@ -27,10 +27,12 @@ const monthRealized = computed(() => {
   return row?.realizedPnl ?? 0
 })
 
+const holdingLots = computed(() => store.lots.filter(l => l.status === 'HOLDING'))
+
 async function loadAll() {
   refreshing.value = true
   try {
-    await Promise.all([store.loadPortfolio(), store.loadPnl(period.value)])
+    await Promise.all([store.loadSummary(), store.loadPnl(period.value), store.loadLots({ status: 'HOLDING' })])
   } finally {
     refreshing.value = false
   }
@@ -39,10 +41,6 @@ async function loadAll() {
 function switchPeriod(v: 'month' | 'week' | 'day' | 'year') {
   period.value = v
   store.loadPnl(v)
-}
-
-function goTrades(itemName: string) {
-  router.push({ path: '/trades', query: { q: itemName } })
 }
 
 onMounted(loadAll)
@@ -64,29 +62,29 @@ onMounted(loadAll)
 
     <div class="cards">
       <div class="card metric">
-        <span class="metric-label">持仓总成本</span>
-        <div v-if="store.loadingPortfolio" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
-        <div v-else class="metric-value num">{{ formatMoney(store.totalCost) }}</div>
-        <span class="metric-sub">剩余持仓的累计买入成本（含手续费）</span>
+        <span class="metric-label">持仓成本</span>
+        <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
+        <div v-else class="metric-value num">{{ formatMoney(store.summary?.holdingCost ?? 0) }}</div>
+        <span class="metric-sub">未卖出批次的累计买入成本</span>
       </div>
       <div class="card metric">
         <span class="metric-label">已实现盈亏</span>
-        <div v-if="store.loadingPortfolio" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
-        <div v-else class="metric-value num" :class="store.totalRealizedPnl >= 0 ? 'up' : 'down'">
-          {{ formatSignedMoney(store.totalRealizedPnl) }}
+        <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
+        <div v-else class="metric-value num" :class="(store.summary?.realizedProfit ?? 0) >= 0 ? 'up' : 'down'">
+          {{ formatSignedMoney(store.summary?.realizedProfit ?? 0) }}
         </div>
         <span class="metric-sub">
-          累计已平仓净盈亏
+          已卖出批次的净盈亏（已扣手续费）
           <template v-if="monthRealized !== null">
             · 本月 <b :class="monthRealized >= 0 ? 'up' : 'down'">{{ formatSignedMoney(monthRealized) }}</b>
           </template>
         </span>
       </div>
       <div class="card metric">
-        <span class="metric-label">当前持仓</span>
-        <div v-if="store.loadingPortfolio" class="skeleton" style="height:28px;width:60px;margin-top:8px"></div>
-        <div v-else class="metric-value num">{{ store.holdings.length }}</div>
-        <span class="metric-sub">当前持有数量的饰品品种数</span>
+        <span class="metric-label">待卖批次</span>
+        <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:60px;margin-top:8px"></div>
+        <div v-else class="metric-value num">{{ store.summary?.holdingCount ?? 0 }}</div>
+        <span class="metric-sub">持有中、可补填卖出的买入记录数</span>
       </div>
     </div>
 
@@ -104,38 +102,39 @@ onMounted(loadAll)
       </div>
     </div>
 
-    <h2>当前持仓</h2>
+    <h2>当前持仓（待卖出）</h2>
     <div class="table-wrap">
       <table class="data">
         <thead>
           <tr>
-            <th>饰品</th><th class="num-head">数量</th><th class="num-head">平均成本</th>
-            <th class="num-head">已实现盈亏</th><th class="num-head">浮动盈亏</th><th></th>
+            <th>饰品</th><th>磨损</th><th class="num-head">数量</th><th class="num-head">买入价</th>
+            <th class="num-head">买入时间</th><th>买入平台</th><th></th>
           </tr>
         </thead>
-        <tbody v-if="store.loadingPortfolio">
+        <tbody v-if="store.loading">
           <tr v-for="i in 3" :key="i">
-            <td colspan="6"><div class="skeleton" style="height:14px;width:100%"></div></td>
+            <td colspan="7"><div class="skeleton" style="height:14px;width:100%"></div></td>
           </tr>
         </tbody>
         <tbody v-else>
-          <tr v-for="h in store.holdings" :key="h.itemName">
-            <td>{{ h.itemName }}</td>
-            <td class="num">{{ formatQty(h.quantity) }}</td>
-            <td class="num">{{ formatMoney(h.avgCost) }}</td>
-            <td class="num" :class="h.realizedPnl >= 0 ? 'up' : 'down'">{{ formatSignedMoney(h.realizedPnl) }}</td>
-            <td class="num">{{ h.unrealizedPnl == null ? '-' : formatMoney(h.unrealizedPnl) }}</td>
+          <tr v-for="lot in holdingLots" :key="lot.id">
+            <td>{{ lot.itemNameZh ?? lot.itemName }}</td>
+            <td>{{ lot.exterior ?? '-' }}</td>
+            <td class="num">{{ formatQty(lot.quantity) }}</td>
+            <td class="num">{{ formatMoney(lot.buyPrice) }}</td>
+            <td class="num mono">{{ formatDateTime(lot.buyTime) }}</td>
+            <td><span class="badge badge-muted mono">{{ lot.buyPlatform }}</span></td>
             <td class="row-actions">
-              <button type="button" class="btn btn-ghost btn-sm" @click="goTrades(h.itemName)">查看交易</button>
+              <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/trades')">去补填卖出</button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div v-if="!store.loadingPortfolio && !store.dashError && store.holdings.length === 0" class="empty-state">
+    <div v-if="!store.loading && !store.dashError && holdingLots.length === 0" class="empty-state">
       <div class="empty-icon" aria-hidden="true">🎒</div>
-      <p>当前没有任何持仓，去交易记录页录入买卖即可生成持仓与盈亏。</p>
-      <router-link to="/trades" class="btn btn-primary">前往交易记录</router-link>
+      <p>当前没有待卖出的持仓，去饰品账本录入买入。</p>
+      <router-link to="/trades" class="btn btn-primary">前往饰品账本</router-link>
     </div>
   </div>
 </template>
@@ -150,15 +149,8 @@ onMounted(loadAll)
 .metric-sub { font-size: 12px; color: var(--text-muted); }
 .metric-sub b { font-weight: 600; }
 .chart-bar { position: relative; }
-.period-group {
-  position: absolute; top: 14px; right: 16px; z-index: 2;
-  display: inline-flex; gap: 4px;
-}
-.chip {
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
-  border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer;
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease;
-}
+.period-group { position: absolute; top: 14px; right: 16px; z-index: 2; display: inline-flex; gap: 4px; }
+.chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .chip:hover { border-color: var(--border-strong); color: var(--text); }
 .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 550; }
 table.data th.num-head, table.data td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

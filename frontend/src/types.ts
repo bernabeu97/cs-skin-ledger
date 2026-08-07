@@ -1,5 +1,6 @@
 export type Direction = 'BUY' | 'SELL'
 export type Status = 'COMPLETED' | 'PENDING'
+export type LotStatus = 'HOLDING' | 'SOLD'
 
 export interface Item {
   id: number
@@ -12,43 +13,53 @@ export interface Item {
   wears: string[] | null
 }
 
-export interface Trade {
+export interface Lot {
   id: number
-  itemId: number | null
+  itemId: number
   itemName: string
   itemNameZh: string | null
-  platform: string
-  direction: Direction
   quantity: number
-  unitPrice: number
-  totalAmount: number
-  fee: number
-  feeRate: number | null
-  currency: string
-  tradedAt: string
-  externalTradeId: string | null
-  status: Status
-  note: string | null
   exterior: string | null
   floatValue: number | null
+  buyPrice: number
+  buyTime: string
+  buyPlatform: string
+  sellPrice: number | null
+  sellTime: string | null
+  sellPlatform: string | null
+  fee: number
+  actualIncome: number | null
+  profit: number | null
+  status: LotStatus
+  note: string | null
 }
 
-export interface TradeCreateRequest {
+export interface LotCreateRequest {
   itemId?: number
   itemName: string
-  platform: string
-  direction: Direction
-  quantity: number
-  unitPrice: number
-  fee?: number
-  feeRate?: number
-  currency?: string
-  tradedAt: string
-  externalTradeId?: string
-  status?: Status
-  note?: string
+  quantity?: number
   exterior?: string
   floatValue?: number
+  buyPrice: number
+  buyTime: string
+  buyPlatform: string
+  note?: string
+}
+
+export interface LotSellRequest {
+  sellPrice: number
+  sellTime?: string
+  sellPlatform?: string
+  fee?: number
+}
+
+export interface LotSummary {
+  totalBuyCost: number
+  holdingCost: number
+  realizedProfit: number
+  lotCount: number
+  holdingCount: number
+  soldCount: number
 }
 
 export interface PnlRow {

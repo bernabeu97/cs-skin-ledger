@@ -1,0 +1,26 @@
+-- 批次账本：一条记录 = 一次买入，卖出数据可后补（参考用户 Excel 字段设计）
+CREATE TABLE lots (
+    id            BIGINT        NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT        NOT NULL,
+    item_id       BIGINT        NOT NULL,
+    quantity      DECIMAL(18,4) NOT NULL DEFAULT 1,
+    exterior      VARCHAR(16)   NULL,
+    float_value   DECIMAL(8,4)  NULL,
+    buy_price     DECIMAL(18,4) NOT NULL,
+    buy_time      DATETIME(6)   NOT NULL,
+    buy_platform  VARCHAR(16)   NOT NULL,
+    sell_price    DECIMAL(18,4) NULL,
+    sell_time     DATETIME(6)   NULL,
+    sell_platform VARCHAR(16)   NULL,
+    fee           DECIMAL(18,4) NOT NULL DEFAULT 0,
+    actual_income DECIMAL(18,4) NULL,
+    profit        DECIMAL(18,4) NULL,
+    status        VARCHAR(16)   NOT NULL DEFAULT 'HOLDING',
+    note          VARCHAR(500)  NULL,
+    created_at    DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    KEY idx_lots_user_time (user_id, buy_time),
+    KEY idx_lots_item (item_id),
+    CONSTRAINT fk_lots_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT fk_lots_item FOREIGN KEY (item_id) REFERENCES items (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

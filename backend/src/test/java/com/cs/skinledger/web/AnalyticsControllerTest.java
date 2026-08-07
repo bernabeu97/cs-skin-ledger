@@ -33,12 +33,17 @@ class AnalyticsControllerTest {
     @Autowired
     private TradeRepository tradeRepository;
 
+    
+    @Autowired
+    private com.cs.skinledger.repository.LotRepository lotRepository;
+
     @Autowired
     private ItemRepository itemRepository;
 
     @BeforeEach
     void cleanDatabase() {
         tradeRepository.deleteAll();
+        lotRepository.deleteAll();
         itemRepository.deleteAll();
     }
 

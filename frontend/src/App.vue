@@ -8,7 +8,7 @@ import AppToast from './components/AppToast.vue'
       <span class="brand">CS 饰品买卖统计</span>
       <nav class="nav">
         <router-link to="/" class="nav-link">仪表盘</router-link>
-        <router-link to="/trades" class="nav-link">交易记录</router-link>
+        <router-link to="/trades" class="nav-link">饰品账本</router-link>
       </nav>
     </div>
   </header>
@@ -23,11 +23,7 @@ import AppToast from './components/AppToast.vue'
 .topbar-inner { max-width: 1200px; margin: 0 auto; padding: 0 20px; height: 52px; display: flex; align-items: center; gap: 28px; }
 .brand { color: #fff; font-weight: 650; font-size: 14px; letter-spacing: .01em; white-space: nowrap; }
 .nav { display: flex; gap: 4px; }
-.nav-link {
-  color: #aeb3bf; text-decoration: none; font-size: 13px; padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  transition: color var(--motion-fast) ease, background var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
-}
+.nav-link { color: #aeb3bf; text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: var(--radius-sm); transition: color var(--motion-fast) ease, background var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .nav-link:hover { color: #fff; background: rgba(255,255,255,.08); }
 .nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nav-link.router-link-active { color: #fff; background: rgba(255,255,255,.1); box-shadow: inset 0 -2px 0 var(--accent); }
