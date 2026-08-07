@@ -16,6 +16,7 @@ import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -118,5 +119,32 @@ class LotControllerTest {
                 .andExpect(jsonPath("$.totalBuyCost").value(300.0))
                 .andExpect(jsonPath("$.holdingCost").value(200.0))
                 .andExpect(jsonPath("$.realizedProfit").value(20.0));
+    }
+
+    @Test
+    void updateBuyWithSellFieldsMarksSold() throws Exception {
+        String created = mockMvc.perform(post("/api/lots")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Knife C", "100", "2026-01-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(created).get("id").asLong();
+
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("itemName", "Knife C");
+        payload.put("buyPrice", "100");
+        payload.put("buyTime", "2026-01-01T10:00:00");
+        payload.put("buyPlatform", "uu");
+        payload.put("sellPrice", "120");
+        payload.put("sellTime", "2026-02-01T10:00:00");
+        payload.put("sellPlatform", "steam");
+        payload.put("fee", "2");
+
+        mockMvc.perform(put("/api/lots/" + id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SOLD"))
+                .andExpect(jsonPath("$.actualIncome").value(118.0))
+                .andExpect(jsonPath("$.profit").value(18.0));
     }
 }

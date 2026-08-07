@@ -21,5 +21,9 @@ public record LotCreateRequest(
         @NotNull @DecimalMin(value = "0", message = "买入价不能为负") BigDecimal buyPrice,
         @NotNull @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime buyTime,
         @NotBlank @Pattern(regexp = "steam|uu|buff", message = "buyPlatform 仅支持 steam/uu/buff") String buyPlatform,
-        @Size(max = 500) String note) {
+        @Size(max = 500) String note,
+        @DecimalMin(value = "0", message = "出售价不能为负") BigDecimal sellPrice,
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime sellTime,
+        @Pattern(regexp = "steam|uu|buff", message = "sellPlatform 仅支持 steam/uu/buff") String sellPlatform,
+        @DecimalMin(value = "0", message = "手续费不能为负") BigDecimal fee) {
 }

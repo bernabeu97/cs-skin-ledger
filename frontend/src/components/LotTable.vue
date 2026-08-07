@@ -2,23 +2,26 @@
 import type { Lot } from '../types'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
 
-defineProps<{
+type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
+
+const props = defineProps<{
   lots: Lot[]
   loading: boolean
-  sortKey: 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
+  sortKey: SortKey
   sortDir: 'asc' | 'desc'
 }>()
 const emit = defineEmits<{
   (e: 'edit', lot: Lot): void
   (e: 'delete', lot: Lot): void
   (e: 'sell', lot: Lot): void
-  (e: 'sort', key: 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'): void
+  (e: 'sort', key: SortKey): void
 }>()
 
 const platformLabel: Record<string, string> = { steam: 'Steam', uu: 'UU', buff: 'BUFF' }
-const SORT_KEYS = ['buyTime', 'buyPrice', 'sellPrice', 'profit', 'quantity'] as const
-const HEAD_LABEL: Record<string, string> = {
-  buyTime: '买入时间', buyPrice: '买入价', sellPrice: '出售价', profit: '盈亏', quantity: '数量'
+
+function arrow(key: SortKey): string {
+  if (props.sortKey !== key) return '↕'
+  return props.sortDir === 'asc' ? '▲' : '▼'
 }
 </script>
 
@@ -27,27 +30,27 @@ const HEAD_LABEL: Record<string, string> = {
     <table class="data">
       <thead>
         <tr>
-          <th>饰品</th><th>磨损</th><th class="num-head">磨损值</th>
-          <th
-            v-for="k in SORT_KEYS"
-            :key="k"
-            class="sortable num-head"
-            :class="{ active: sortKey === k }"
-            @click="emit('sort', k)"
-          >
-            {{ HEAD_LABEL[k] }}
-            <span class="sort-arrow" aria-hidden="true">
-              {{ sortKey === k ? (sortDir === 'asc' ? '▲' : '▼') : '↕' }}
-            </span>
-          </th>
-          <th class="num-head">实际收入</th><th class="num-head">手续费</th>
-          <th class="num-head">出售时间</th><th>买入平台</th><th>出售平台</th>
-          <th>状态</th><th>备注</th><th></th>
+          <th>饰品</th>
+          <th>磨损</th>
+          <th class="num-head">磨损值</th>
+          <th class="sortable num-head" :class="{ active: sortKey === 'quantity' }" @click="emit('sort', 'quantity')">数量 <span>{{ arrow('quantity') }}</span></th>
+          <th class="sortable num-head" :class="{ active: sortKey === 'buyPrice' }" @click="emit('sort', 'buyPrice')">买入价 <span>{{ arrow('buyPrice') }}</span></th>
+          <th class="sortable num-head" :class="{ active: sortKey === 'buyTime' }" @click="emit('sort', 'buyTime')">买入时间 <span>{{ arrow('buyTime') }}</span></th>
+          <th>买入平台</th>
+          <th class="sortable num-head" :class="{ active: sortKey === 'sellPrice' }" @click="emit('sort', 'sellPrice')">出售价 <span>{{ arrow('sellPrice') }}</span></th>
+          <th class="num-head">实际收入</th>
+          <th class="num-head">手续费</th>
+          <th class="num-head">出售时间</th>
+          <th>出售平台</th>
+          <th class="sortable num-head" :class="{ active: sortKey === 'profit' }" @click="emit('sort', 'profit')">盈亏 <span>{{ arrow('profit') }}</span></th>
+          <th>状态</th>
+          <th>备注</th>
+          <th></th>
         </tr>
       </thead>
       <tbody v-if="loading">
         <tr v-for="i in 6" :key="i">
-          <td colspan="14"><div class="skeleton" style="height:14px;width:100%"></div></td>
+          <td colspan="16"><div class="skeleton" style="height:14px;width:100%"></div></td>
         </tr>
       </tbody>
       <tbody v-else>
@@ -58,12 +61,15 @@ const HEAD_LABEL: Record<string, string> = {
           <td class="num">{{ formatQty(lot.quantity) }}</td>
           <td class="num">{{ formatMoney(lot.buyPrice) }}</td>
           <td class="mono">{{ formatDateTime(lot.buyTime) }}</td>
+          <td><span class="badge badge-muted mono">{{ platformLabel[lot.buyPlatform] ?? lot.buyPlatform }}</span></td>
           <td class="num">{{ lot.sellPrice != null ? formatMoney(lot.sellPrice) : '-' }}</td>
           <td class="num">{{ lot.actualIncome != null ? formatMoney(lot.actualIncome) : '-' }}</td>
           <td class="num">{{ formatMoney(lot.fee) }}</td>
           <td class="mono">{{ lot.sellTime ? formatDateTime(lot.sellTime) : '-' }}</td>
-          <td><span class="badge badge-muted mono">{{ platformLabel[lot.buyPlatform] ?? lot.buyPlatform }}</span></td>
           <td>{{ lot.sellPlatform ? platformLabel[lot.sellPlatform] ?? lot.sellPlatform : '-' }}</td>
+          <td class="num" :class="lot.profit != null ? (lot.profit >= 0 ? 'up' : 'down') : ''">
+            {{ lot.profit != null ? formatSignedMoney(lot.profit) : '-' }}
+          </td>
           <td>
             <span class="badge" :class="lot.status === 'HOLDING' ? 'badge-accent' : 'badge-muted'">
               {{ lot.status === 'HOLDING' ? '持仓中' : '已卖出' }}
@@ -85,7 +91,7 @@ const HEAD_LABEL: Record<string, string> = {
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 th.sortable.active { color: var(--accent); }
-.sort-arrow { font-size: 10px; margin-left: 2px; opacity: .7; }
+th.sortable span { font-size: 10px; margin-left: 2px; opacity: .7; }
 .num-head { text-align: right; }
 td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 tbody tr.sold td { color: var(--text-secondary); }

@@ -21,9 +21,13 @@ const form = reactive({
     ? props.editing.buyTime.slice(0, 16)
     : new Date().toISOString().slice(0, 16),
   buyPlatform: props.editing?.buyPlatform ?? 'uu',
-  note: props.editing?.note ?? ''
+  note: props.editing?.note ?? '',
+  sellPrice: props.editing?.sellPrice != null ? String(props.editing.sellPrice) : '',
+  sellTime: props.editing?.sellTime ? props.editing.sellTime.slice(0, 16) : '',
+  sellPlatform: props.editing?.sellPlatform ?? props.editing?.buyPlatform ?? 'uu',
+  fee: props.editing?.fee != null ? String(props.editing.fee) : '0'
 })
-const errors = reactive<{ item?: string; buyPrice?: string }>({})
+const errors = reactive<{ item?: string; buyPrice?: string; sellPrice?: string; fee?: string }>({})
 const firstField = ref<HTMLInputElement | null>(null)
 
 function onKey(e: KeyboardEvent) {
@@ -69,7 +73,19 @@ function validate(): boolean {
   errors.item = selectedItem.value || manualName.value.trim() ? undefined : '请选择或输入饰品'
   const price = Number(form.buyPrice)
   errors.buyPrice = !form.buyPrice || Number.isNaN(price) || price < 0 ? '请输入有效的买入价' : undefined
-  return !errors.item && !errors.buyPrice
+  if (props.editing && form.sellPrice !== '') {
+    const sp = Number(form.sellPrice)
+    errors.sellPrice = Number.isNaN(sp) || sp < 0 ? '出售价不能为负' : undefined
+  } else {
+    errors.sellPrice = undefined
+  }
+  if (props.editing && form.fee !== '') {
+    const fee = Number(form.fee)
+    errors.fee = Number.isNaN(fee) || fee < 0 ? '手续费不能为负' : undefined
+  } else {
+    errors.fee = undefined
+  }
+  return !errors.item && !errors.buyPrice && !errors.sellPrice && !errors.fee
 }
 
 function submit() {
@@ -80,6 +96,7 @@ function submit() {
     window.alert('磨损值必须在 0-1 之间')
     return
   }
+  const sellTime = form.sellTime.length === 16 ? form.sellTime + ':00' : form.sellTime
   emit('saved', {
     itemId: selectedItem.value?.id,
     itemName: selectedItem.value?.marketHashName ?? manualName.value.trim(),
@@ -89,7 +106,11 @@ function submit() {
     buyPrice: Number(form.buyPrice),
     buyTime,
     buyPlatform: form.buyPlatform,
-    note: form.note || undefined
+    note: form.note || undefined,
+    sellPrice: props.editing && form.sellPrice !== '' ? Number(form.sellPrice) : undefined,
+    sellTime: props.editing && form.sellTime ? sellTime : undefined,
+    sellPlatform: props.editing && form.sellPlatform ? form.sellPlatform : undefined,
+    fee: props.editing && form.fee !== '' ? Number(form.fee) : undefined
   })
 }
 </script>
@@ -99,9 +120,11 @@ function submit() {
     <div class="dialog-panel form-panel" role="dialog" aria-modal="true" aria-label="买入记录">
       <form novalidate @submit.prevent="submit">
         <div class="form-header">
-          <h2>{{ props.editing ? '编辑买入记录' : '新增买入记录' }}</h2>
+          <h2>{{ props.editing ? '编辑记录（含卖出信息）' : '新增买入记录' }}</h2>
           <button type="button" class="close-btn" aria-label="关闭" @click="emit('close')">×</button>
         </div>
+
+        <div class="section-label">买入信息</div>
         <div class="grid">
           <div class="field wide">
             <span>饰品（数据字典） <i class="req">*</i></span>
@@ -150,6 +173,35 @@ function submit() {
             <input v-model="form.note" class="input" />
           </div>
         </div>
+
+        <template v-if="props.editing">
+          <div class="section-label">卖出信息 <span class="section-hint">填写出售价后按「实际收入 = 出售价 − 手续费」计算盈亏</span></div>
+          <div class="grid">
+            <div class="field">
+              <span>出售价</span>
+              <input v-model="form.sellPrice" class="input num" type="number" step="0.01" min="0" @input="errors.sellPrice = undefined" />
+              <p v-if="errors.sellPrice" class="field-error">{{ errors.sellPrice }}</p>
+            </div>
+            <div class="field">
+              <span>手续费</span>
+              <input v-model="form.fee" class="input num" type="number" step="0.01" min="0" @input="errors.fee = undefined" />
+              <p v-if="errors.fee" class="field-error">{{ errors.fee }}</p>
+            </div>
+            <div class="field">
+              <span>出售时间</span>
+              <input v-model="form.sellTime" class="input" type="datetime-local" />
+            </div>
+            <div class="field">
+              <span>出售平台</span>
+              <select v-model="form.sellPlatform" class="select">
+                <option value="steam">Steam</option>
+                <option value="uu">UU</option>
+                <option value="buff">BUFF</option>
+              </select>
+            </div>
+          </div>
+        </template>
+
         <div class="form-actions">
           <div class="total-preview" v-if="totalPreview !== null">
             买入成本 ≈ <b class="num">{{ formatMoney(totalPreview) }}</b>
@@ -172,7 +224,9 @@ function submit() {
 .form-header h2 { margin: 0; }
 .close-btn { border: none; background: none; font-size: 20px; line-height: 1; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm); }
 .close-btn:hover { color: var(--text); background: rgba(16,24,40,.06); }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px 20px; }
+.section-label { padding: 14px 20px 0; font-size: 12px; font-weight: 650; color: var(--text-secondary); }
+.section-hint { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 12px 20px; }
 .field .req { font-style: normal; }
 .field-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
 .form-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-muted); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }

@@ -44,6 +44,10 @@ export interface LotCreateRequest {
   buyTime: string
   buyPlatform: string
   note?: string
+  sellPrice?: number
+  sellTime?: string
+  sellPlatform?: string
+  fee?: number
 }
 
 export interface LotSellRequest {

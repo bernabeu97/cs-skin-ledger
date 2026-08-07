@@ -59,7 +59,14 @@ public class LotService {
         Item item = resolveItem(req);
         lot.setItem(item);
         applyBuyFields(lot, req);
-        if (lot.getStatus() == LotStatus.SOLD) {
+        if (req.sellPrice() != null) {
+            lot.setSellPrice(req.sellPrice());
+            lot.setSellTime(req.sellTime());
+            lot.setSellPlatform(req.sellPlatform());
+            lot.setFee(req.fee() == null ? BigDecimal.ZERO : req.fee());
+            recomputeSell(lot);
+            lot.setStatus(LotStatus.SOLD);
+        } else if (lot.getStatus() == LotStatus.SOLD) {
             recomputeSell(lot);
         }
         return LotResponse.from(lotRepository.save(lot));
