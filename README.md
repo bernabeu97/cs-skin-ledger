@@ -47,3 +47,10 @@ npm.cmd run dev
 - 浮动盈亏（当前市价）待行情采集模块（M2/M3）接入。
 - 平台费率（Steam 约 15%、BUFF 约 2.5%）后续做成配置项。
 - 数据在本机 MySQL，请定期导出 CSV/JSON 备份。
+
+## 饰品数据字典（CSGO-API）
+
+- 数据来源：https://github.com/ByMykel/CSGO-API（中英文按 id 对齐导入，共 1.7 万条：武器皮肤/箱子/贴纸/钥匙/挂件/徽章/涂鸦/探员/音乐盒/收藏品）。
+- 首次/更新导入（后端运行中执行，数据文件默认放在项目 work/csgoapi）：
+  `Invoke-RestMethod -Uri 'http://localhost:8080/api/items/import?dir=work/csgoapi' -Method Post`
+- 交易录入时饰品为字典下拉（支持中文关键词搜索），皮肤类可选磨损等级与磨损值（0-1）。

@@ -134,6 +134,7 @@ public class ImportExportService {
 
     private TradeCreateRequest toRequest(CSVRecord record) {
         return new TradeCreateRequest(
+                null,
                 record.get("itemName"),
                 record.get("platform"),
                 TradeDirection.valueOf(record.get("direction").toUpperCase()),
@@ -146,7 +147,7 @@ public class ImportExportService {
                 blankToNull(record.get("externalTradeId")),
                 blankToNull(record.get("status")) == null ? null
                         : TradeStatus.valueOf(blankToNull(record.get("status")).toUpperCase()),
-                blankToNull(record.get("note")));
+                blankToNull(record.get("note")), null, null);
     }
 
     private String blankToNull(String s) {

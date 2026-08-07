@@ -50,7 +50,7 @@ public class TradeService {
         validate(req);
         validateSellHolding(req, null);
         User user = localUser();
-        Item item = findOrCreateItem(req.itemName());
+        Item item = resolveItem(req);
         Trade trade = new Trade();
         applyFields(trade, req, item, user);
         return TradeResponse.from(tradeRepository.save(trade));
@@ -71,7 +71,7 @@ public class TradeService {
         Trade trade = tradeRepository.findById(id).orElseThrow(() -> new TradeNotFoundException(id));
         validate(req);
         validateSellHolding(req, trade.getId());
-        Item item = findOrCreateItem(req.itemName());
+        Item item = resolveItem(req);
         applyFields(trade, req, item, trade.getUser());
         return TradeResponse.from(tradeRepository.save(trade));
     }
@@ -226,10 +226,24 @@ public class TradeService {
         trade.setExternalTradeId(req.externalTradeId());
         trade.setStatus(req.status() == null ? TradeStatus.COMPLETED : req.status());
         trade.setNote(req.note());
+        trade.setExterior(req.exterior());
+        trade.setFloatValue(req.floatValue());
+    }
+
+    private Item resolveItem(TradeCreateRequest req) {
+        if (req.itemId() != null) {
+            return itemRepository.findById(req.itemId())
+                    .orElseThrow(() -> new IllegalArgumentException("饰品不存在: " + req.itemId()));
+        }
+        if (req.itemName() == null || req.itemName().isBlank()) {
+            throw new IllegalArgumentException("必须选择或输入饰品");
+        }
+        return findOrCreateItem(req.itemName());
     }
 
     private Item findOrCreateItem(String marketHashName) {
         return itemRepository.findByMarketHashName(marketHashName)
+                .or(() -> itemRepository.findByNameZh(marketHashName))
                 .orElseGet(() -> {
                     Item item = new Item();
                     item.setMarketHashName(marketHashName);

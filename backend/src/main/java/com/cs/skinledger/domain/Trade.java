@@ -75,6 +75,12 @@ public class Trade {
     @Column(length = 500)
     private String note;
 
+    @Column(length = 16)
+    private String exterior;
+
+    @Column(name = "float_value", precision = 8, scale = 4)
+    private BigDecimal floatValue;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

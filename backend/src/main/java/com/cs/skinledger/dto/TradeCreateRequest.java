@@ -3,15 +3,18 @@ package com.cs.skinledger.dto;
 import com.cs.skinledger.domain.TradeDirection;
 import com.cs.skinledger.domain.TradeStatus;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record TradeCreateRequest(
+        Long itemId,
         @NotBlank String itemName,
         @NotBlank @Pattern(regexp = "steam|uu|buff", message = "platform 仅支持 steam/uu/buff") String platform,
         @NotNull TradeDirection direction,
@@ -23,5 +26,7 @@ public record TradeCreateRequest(
         @NotNull @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime tradedAt,
         String externalTradeId,
         TradeStatus status,
-        String note) {
+        String note,
+        @Size(max = 16, message = "磨损等级过长") String exterior,
+        @DecimalMin(value = "0", message = "磨损值不能小于 0") @DecimalMax(value = "1", message = "磨损值不能大于 1") BigDecimal floatValue) {
 }

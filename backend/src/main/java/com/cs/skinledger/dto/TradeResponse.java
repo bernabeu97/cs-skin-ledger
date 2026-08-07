@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 
 public record TradeResponse(
         Long id,
+        Long itemId,
         String itemName,
+        String itemNameZh,
         String platform,
         TradeDirection direction,
         BigDecimal quantity,
@@ -21,12 +23,17 @@ public record TradeResponse(
         LocalDateTime tradedAt,
         String externalTradeId,
         TradeStatus status,
-        String note) {
+        String note,
+        String exterior,
+        BigDecimal floatValue) {
 
     public static TradeResponse from(Trade t) {
+        ItemBrief item = t.getItem() == null ? null : new ItemBrief(t.getItem());
         return new TradeResponse(
                 t.getId(),
-                t.getItem().getMarketHashName(),
+                item == null ? null : item.id(),
+                item == null ? null : item.marketHashName(),
+                item == null ? null : item.nameZh(),
                 t.getPlatform(),
                 t.getDirection(),
                 t.getQuantity(),
@@ -38,6 +45,14 @@ public record TradeResponse(
                 t.getTradedAt(),
                 t.getExternalTradeId(),
                 t.getStatus(),
-                t.getNote());
+                t.getNote(),
+                t.getExterior(),
+                t.getFloatValue());
+    }
+
+    private record ItemBrief(Long id, String marketHashName, String nameZh) {
+        ItemBrief(com.cs.skinledger.domain.Item i) {
+            this(i.getId(), i.getMarketHashName(), i.getNameZh());
+        }
     }
 }
