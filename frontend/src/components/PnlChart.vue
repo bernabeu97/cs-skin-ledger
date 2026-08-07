@@ -54,7 +54,7 @@ onMounted(() => {
     observer.observe(el.value)
   }
 })
-watch(() => props.rows, render, { deep: true })
+watch(() => props.rows, render, { deep: true, flush: 'post' })
 onBeforeUnmount(() => {
   observer?.disconnect()
   chart?.dispose()
