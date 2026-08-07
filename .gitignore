@@ -10,3 +10,9 @@ dist/
 .env
 work/
 outputs/
+
+target/
+dist/
+.idea/
+*.iml
+.vite/
