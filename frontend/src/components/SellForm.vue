@@ -1,27 +1,43 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useSettingsStore } from '../stores/settings'
 import type { Lot, LotSellRequest } from '../types'
 import { formatMoney } from '../utils/format'
 
 const props = defineProps<{ lot: Lot; saving: boolean }>()
+const settingsStore = useSettingsStore()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', payload: LotSellRequest): void }>()
 
 const form = reactive({
   sellPrice: props.lot.sellPrice != null ? String(props.lot.sellPrice) : '',
   sellTime: props.lot.sellTime ? props.lot.sellTime.slice(0, 16) : new Date().toISOString().slice(0, 16),
   sellPlatform: props.lot.sellPlatform ?? props.lot.buyPlatform,
-  fee: props.lot.fee != null ? String(props.lot.fee) : '0'
+  fee: props.lot.fee != null ? String(props.lot.fee) : ''
 })
+const feeTouched = ref(props.lot.fee != null && Number(props.lot.fee) > 0)
 const errors = reactive<{ sellPrice?: string; fee?: string }>({})
 const firstField = ref<HTMLInputElement | null>(null)
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
-onMounted(() => {
+function applySuggestedFee() {
+  if (feeTouched.value) return
+  const price = Number(form.sellPrice)
+  if (!Number.isFinite(price) || price <= 0) return
+  const rate = settingsStore.rateFor(form.sellPlatform)
+  if (rate <= 0) return
+  form.fee = String(Math.round(price * rate * 100) / 100)
+}
+
+onMounted(async () => {
   window.addEventListener('keydown', onKey)
   firstField.value?.focus()
+  await settingsStore.loadFees()
+  applySuggestedFee()
 })
+
+watch([() => form.sellPrice, () => form.sellPlatform], applySuggestedFee)
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 function submit() {
@@ -60,8 +76,9 @@ function submit() {
           </div>
           <div class="field">
             <span>手续费</span>
-            <input v-model="form.fee" class="input num" type="number" step="0.01" min="0" />
+            <input v-model="form.fee" class="input num" type="number" step="0.01" min="0" @input="feeTouched = true" />
             <p v-if="errors.fee" class="field-error">{{ errors.fee }}</p>
+            <p v-else class="field-hint">费率 {{ (settingsStore.rateFor(form.sellPlatform) * 100).toFixed(1) }}%（可手动修改）</p>
           </div>
           <div class="field">
             <span>出售时间</span>
@@ -101,6 +118,7 @@ function submit() {
 .buy-info { padding: 12px 20px 0; font-size: 12px; color: var(--text-muted); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px 20px; }
 .field .req { font-style: normal; }
+.field-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
 .form-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-muted); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .total-preview { font-size: 13px; color: var(--text-secondary); }
 .actions-right { display: flex; gap: 8px; }

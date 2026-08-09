@@ -5,11 +5,13 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import LotForm from '../components/LotForm.vue'
 import LotTable from '../components/LotTable.vue'
 import SellForm from '../components/SellForm.vue'
+import ItemSelect from '../components/ItemSelect.vue'
 import { errorMessage } from '../api/client'
 import { useLotsStore } from '../stores/lots'
+import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
 import { downloadBlob, formatMoney, formatSignedMoney } from '../utils/format'
-import type { Lot, LotCreateRequest, LotSellRequest } from '../types'
+import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert } from '../types'
 
 type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
 
@@ -33,6 +35,14 @@ const searchEl = ref<HTMLInputElement | null>(null)
 const pendingOnly = ref(false)
 const highlightId = ref<number | null>(null)
 const route = useRoute()
+const alertsStore = useAlertsStore()
+const tab = ref<'lots' | 'alerts'>('lots')
+const alertItem = ref<Item | null>(null)
+const alertPlatform = ref('uu')
+const alertCondition = ref<'gt' | 'lt'>('gt')
+const alertThreshold = ref<number | null>(null)
+const alertBusy = ref(false)
+const deleteAlertTarget = ref<PriceAlert | null>(null)
 
 const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
@@ -173,6 +183,38 @@ function downloadTemplate() {
   downloadBlob(new Blob(['\uFEFF' + header + '\n'], { type: 'text/csv' }), 'lots_template.csv')
 }
 
+async function addAlert() {
+  if (!alertItem.value || alertThreshold.value == null || !(alertThreshold.value > 0)) return
+  alertBusy.value = true
+  try {
+    await alertsStore.createAlert({
+      itemId: alertItem.value.id,
+      platform: alertPlatform.value,
+      condition: alertCondition.value,
+      threshold: alertThreshold.value
+    })
+    alertItem.value = null
+    alertThreshold.value = null
+    ui.toast('success', '价格提醒已添加')
+  } catch (e) {
+    ui.toast('error', String(e))
+  } finally {
+    alertBusy.value = false
+  }
+}
+
+async function confirmDeleteAlert() {
+  const target = deleteAlertTarget.value
+  deleteAlertTarget.value = null
+  if (!target) return
+  try {
+    await alertsStore.deleteAlert(target.id)
+    ui.toast('success', '提醒已删除')
+  } catch (e) {
+    ui.toast('error', String(e))
+  }
+}
+
 function onGlobalKey(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement | null)?.tagName
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
@@ -205,7 +247,7 @@ function applyRouteTarget() {
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKey)
   void (async () => {
-    await refreshAll()
+    await Promise.all([refreshAll(), alertsStore.loadAlerts()])
     applyRouteTarget()
   })()
 })
@@ -214,6 +256,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 
 <template>
   <div>
+    <div class="page-tabs">
+      <button type="button" class="tab-btn" :class="{ active: tab === 'lots' }" @click="tab = 'lots'">饰品账本</button>
+      <button type="button" class="tab-btn" :class="{ active: tab === 'alerts' }" @click="tab = 'alerts'">价格提醒</button>
+    </div>
+    <div v-show="tab === 'lots'">
     <h1>
       饰品账本
       <span v-if="!store.loading" class="count">{{ store.lots.length }} 条</span>
@@ -329,6 +376,79 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       @confirm="onConfirmDelete"
       @cancel="confirmTarget = null"
     />
+    </div>
+
+    <div v-show="tab === 'alerts'">
+      <h1>价格提醒</h1>
+      <div class="alert-bar">
+        <ItemSelect v-model="alertItem" placeholder="搜索要提醒的饰品（支持中文）" />
+        <select v-model="alertPlatform" class="input" style="width:auto">
+          <option value="uu">UU</option>
+          <option value="steam">Steam</option>
+          <option value="buff">BUFF</option>
+        </select>
+        <select v-model="alertCondition" class="input" style="width:auto">
+          <option value="gt">价格高于</option>
+          <option value="lt">价格低于</option>
+        </select>
+        <input
+          v-model.number="alertThreshold"
+          class="input"
+          type="number"
+          min="0.01"
+          step="0.01"
+          placeholder="阈值(元)"
+          style="width:120px"
+        />
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="alertBusy || !alertItem || alertThreshold == null || !(alertThreshold > 0)"
+          @click="addAlert"
+        >{{ alertBusy ? '添加中…' : '添加提醒' }}</button>
+      </div>
+      <div v-if="alertsStore.error" class="error-banner"><span>{{ alertsStore.error }}</span></div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>饰品</th><th>平台</th><th>条件</th><th class="num-head">阈值</th><th>状态</th><th></th>
+            </tr>
+          </thead>
+          <tbody v-if="alertsStore.loading">
+            <tr><td colspan="6"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
+          </tbody>
+          <tbody v-else>
+            <tr v-for="a in alertsStore.alerts" :key="a.id">
+              <td>{{ a.itemNameZh ?? a.itemName }}</td>
+              <td><span class="badge badge-muted mono">{{ a.platform }}</span></td>
+              <td>{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
+              <td class="num">{{ formatMoney(a.threshold) }}</td>
+              <td>
+                <span v-if="a.triggeredAt" class="badge badge-accent">已触发 {{ formatDateTime(a.triggeredAt) }}</span>
+                <span v-else class="badge badge-muted">监控中</span>
+              </td>
+              <td class="row-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @click="alertsStore.resetAlert(a.id)">重置</button>
+                <button type="button" class="btn btn-ghost btn-sm danger-text" @click="deleteAlertTarget = a">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="!alertsStore.loading && alertsStore.alerts.length === 0" class="empty-state compact">
+        <p>还没有价格提醒。添加后，每次“刷新行情”会自动检查是否触发。</p>
+      </div>
+      <ConfirmDialog
+        v-if="deleteAlertTarget"
+        title="删除提醒"
+        :message="`确认删除「${deleteAlertTarget.itemNameZh ?? deleteAlertTarget.itemName}」的价格提醒？`"
+        confirm-text="删除"
+        danger
+        @confirm="confirmDeleteAlert"
+        @cancel="deleteAlertTarget = null"
+      />
+    </div>
   </div>
 </template>
 
@@ -354,6 +474,14 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .export-group { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .export-group .btn { border: none; border-radius: 0; }
 .export-group .btn + .btn { border-left: 1px solid var(--border); }
+.page-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.tab-btn { border: none; background: none; padding: 9px 14px; font-size: 13px; font-weight: 550; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.alert-bar .item-select { flex: 1; min-width: 220px; }
+.danger-text { color: var(--danger) !important; }
+.empty-state.compact { padding: 12px; }
 @media (max-width: 640px) {
   .hint { display: none; }
   .toolbar .search { width: 100%; }

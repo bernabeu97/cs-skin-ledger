@@ -37,6 +37,9 @@ class PriceServiceTest {
 
     @Autowired
     private com.cs.skinledger.repository.OtherCostRepository otherCostRepository;
+
+    @Autowired
+    private com.cs.skinledger.repository.SettingRepository settingRepository;
     @Autowired
     private PriceSnapshotRepository snapshotRepository;
     @Autowired
@@ -49,6 +52,7 @@ class PriceServiceTest {
         snapshotRepository.deleteAll();
         lotRepository.deleteAll();
         otherCostRepository.deleteAll();
+        settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
         userRepository.deleteAll();

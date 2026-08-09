@@ -10,6 +10,7 @@ import AppToast from './components/AppToast.vue'
         <router-link to="/" class="nav-link">仪表盘</router-link>
         <router-link to="/trades" class="nav-link">饰品账本</router-link>
         <router-link to="/costs" class="nav-link">其他收支</router-link>
+        <router-link to="/settings" class="nav-link">设置</router-link>
       </nav>
     </div>
   </header>

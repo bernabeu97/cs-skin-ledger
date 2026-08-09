@@ -37,6 +37,9 @@ class UuImportServiceTest {
 
     @Autowired
     private com.cs.skinledger.repository.OtherCostRepository otherCostRepository;
+
+    @Autowired
+    private com.cs.skinledger.repository.SettingRepository settingRepository;
     @Autowired
     private PriceSnapshotRepository snapshotRepository;
     @Autowired
@@ -48,6 +51,7 @@ class UuImportServiceTest {
     void setUp() {
         snapshotRepository.deleteAll();
         otherCostRepository.deleteAll();
+        settingRepository.deleteAll();
         alertRepository.deleteAll();
         lotRepository.deleteAll();
         itemRepository.deleteAll();

@@ -1,20 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PnlChart from '../components/PnlChart.vue'
 import { useLotsStore } from '../stores/lots'
-import { useAlertsStore } from '../stores/alerts'
 import { useCostsStore } from '../stores/costs'
-import { useUiStore } from '../stores/ui'
-import ItemSelect from '../components/ItemSelect.vue'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
-import type { HoldingValuation, Item, PriceAlert } from '../types'
+import type { HoldingValuation } from '../types'
 
 const store = useLotsStore()
-const alertsStore = useAlertsStore()
 const costsStore = useCostsStore()
-const ui = useUiStore()
 const router = useRouter()
 
 const PERIODS = [
@@ -27,13 +21,7 @@ const period = ref<'month' | 'week' | 'day' | 'year'>('month')
 const refreshing = ref(false)
 const refreshingPrices = ref(false)
 const priceMessage = ref('')
-const alertItem = ref<Item | null>(null)
-const alertPlatform = ref('uu')
-const alertCondition = ref<'gt' | 'lt'>('gt')
-const alertThreshold = ref<number | null>(null)
-const alertBusy = ref(false)
 const showCompare = ref(false)
-const deleteAlertTarget = ref<PriceAlert | null>(null)
 
 const periodLabel = computed(() => PERIODS.find(p => p.v === period.value)?.label ?? '月度')
 
@@ -62,6 +50,10 @@ const marketValueText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.v
 const unrealizedText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.value) ? '-' : formatSignedMoney(store.valuation?.unrealizedPnl ?? 0))
 const priceMessageIsWarning = computed(() => priceMessage.value.includes('未填写磨损等级'))
 
+/** 总盈亏 = 饰品已实现盈亏 + 其他收支净额 */
+const totalPnl = computed(() => (store.summary?.realizedProfit ?? 0) + (costsStore.summary?.net ?? 0))
+const totalPnlText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.value) ? '-' : formatSignedMoney(totalPnl.value))
+
 const priceHint = computed(() => {
   if (store.priceConfig?.csqaqConfigured) return ''
   const msg = store.priceConfig?.messages?.csqaq
@@ -77,7 +69,6 @@ async function loadAll() {
       store.loadLots({ status: 'HOLDING' }),
       store.loadValuation(),
       store.loadPriceConfig(),
-      alertsStore.loadAlerts(),
       costsStore.loadSummary()
     ])
   } finally {
@@ -111,38 +102,6 @@ async function refreshPrices() {
   }
 }
 
-async function addAlert() {
-  if (!alertItem.value || alertThreshold.value == null || !(alertThreshold.value > 0)) return
-  alertBusy.value = true
-  try {
-    await alertsStore.createAlert({
-      itemId: alertItem.value.id,
-      platform: alertPlatform.value,
-      condition: alertCondition.value,
-      threshold: alertThreshold.value
-    })
-    alertItem.value = null
-    alertThreshold.value = null
-    ui.toast('success', '价格提醒已添加')
-  } catch (e) {
-    priceMessage.value = '添加提醒失败：' + String(e)
-  } finally {
-    alertBusy.value = false
-  }
-}
-
-async function confirmDeleteAlert() {
-  const target = deleteAlertTarget.value
-  deleteAlertTarget.value = null
-  if (!target) return
-  try {
-    await alertsStore.deleteAlert(target.id)
-    ui.toast('success', '提醒已删除')
-  } catch (e) {
-    ui.toast('error', String(e))
-  }
-}
-
 onMounted(loadAll)
 </script>
 
@@ -170,11 +129,6 @@ onMounted(loadAll)
       <button type="button" class="btn btn-sm" @click="router.push('/trades?pending=1')">去补填</button>
     </div>
 
-    <div v-if="pendingCount > 0" class="hint-banner warn">
-      <span>{{ pendingCount }} 条持仓缺少买入价，浮动盈亏可能不准确，建议尽快补填。</span>
-      <button type="button" class="btn btn-sm" @click="router.push('/trades?pending=1')">去补填</button>
-    </div>
-
     <div v-if="priceMessage" class="hint-banner" :class="priceMessageIsWarning ? 'warn' : 'ok'">
       <span>{{ priceMessage }}</span>
     </div>
@@ -185,25 +139,20 @@ onMounted(loadAll)
     </div>
 
     <div class="cards">
+      <div class="card metric metric-primary">
+        <span class="metric-label">总盈亏（已实现 + 其他收支）</span>
+        <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:140px;margin-top:8px"></div>
+        <div v-else class="metric-value num" :class="totalPnl >= 0 ? 'up' : 'down'">{{ totalPnlText }}</div>
+        <span class="metric-sub">
+          已实现 {{ formatSignedMoney(store.summary?.realizedProfit ?? 0) }} · 其他收支 {{ formatSignedMoney(costsStore.summary?.net ?? 0) }}
+          <template v-if="monthRealized !== null">· 本月 <b :class="monthRealized >= 0 ? 'up' : 'down'">{{ formatSignedMoney(monthRealized) }}</b></template>
+        </span>
+      </div>
       <div class="card metric">
         <span class="metric-label">持仓成本</span>
         <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
         <div v-else class="metric-value num">{{ formatMoney(store.summary?.holdingCost ?? 0) }}</div>
         <span class="metric-sub">未卖出批次的累计买入成本</span>
-      </div>
-      <div class="card metric">
-        <span class="metric-label">已实现盈亏</span>
-        <div v-if="store.loadingSummary" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
-        <div v-else class="metric-value num" :class="(store.summary?.realizedProfit ?? 0) >= 0 ? 'up' : 'down'">
-          {{ formatSignedMoney(store.summary?.realizedProfit ?? 0) }}
-        </div>
-        <span class="metric-sub">
-          已卖出批次的净盈亏（已扣手续费）
-          <template v-if="monthRealized !== null">
-            · 本月 <b :class="monthRealized >= 0 ? 'up' : 'down'">{{ formatSignedMoney(monthRealized) }}</b>
-          </template>
-          · 含其他收支 <b :class="(costsStore.summary?.net ?? 0) >= 0 ? 'up' : 'down'">{{ formatSignedMoney(costsStore.summary?.net ?? 0) }}</b>
-        </span>
       </div>
       <div class="card metric">
         <span class="metric-label">待卖批次</span>
@@ -252,12 +201,7 @@ onMounted(loadAll)
     </div>
 
     <div class="section-head">
-      <div class="section-head">
       <h2>当前持仓（待卖出）</h2>
-      <button type="button" class="chip" :class="{ active: showCompare }" @click="showCompare = !showCompare">
-        {{ showCompare ? '收起 Steam 对比' : '对比 Steam 价' }}
-      </button>
-    </div>
       <button type="button" class="chip" :class="{ active: showCompare }" @click="showCompare = !showCompare">
         {{ showCompare ? '收起 Steam 对比' : '对比 Steam 价' }}
       </button>
@@ -302,7 +246,7 @@ onMounted(loadAll)
             <td class="num mono">{{ formatDateTime(lot.buyTime) }}</td>
             <td><span class="badge badge-muted mono">{{ lot.buyPlatform }}</span></td>
             <td class="row-actions">
-              <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/trades')">去补填卖出</button>
+              <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/trades?lotId=' + lot.id)">去补填卖出</button>
             </td>
           </tr>
         </tbody>
@@ -313,86 +257,6 @@ onMounted(loadAll)
       <p>当前没有待卖出的持仓，去饰品账本录入买入。</p>
       <router-link to="/trades" class="btn btn-primary">前往饰品账本</router-link>
     </div>
-    <h2>价格提醒</h2>
-    <div class="alert-bar">
-      <ItemSelect v-model="alertItem" placeholder="搜索要提醒的饰品（支持中文）" />
-      <select v-model="alertPlatform" class="input" style="width:auto">
-        <option value="uu">UU</option>
-        <option value="steam">Steam</option>
-        <option value="buff">BUFF</option>
-      </select>
-      <select v-model="alertCondition" class="input" style="width:auto">
-        <option value="gt">价格高于</option>
-        <option value="lt">价格低于</option>
-      </select>
-      <input
-        v-model.number="alertThreshold"
-        class="input"
-        type="number"
-        min="0.01"
-        step="0.01"
-        placeholder="阈值(元)"
-        style="width:120px"
-      />
-      <button
-        type="button"
-        class="btn btn-primary"
-        :disabled="alertBusy || !alertItem || alertThreshold == null || !(alertThreshold > 0)"
-        @click="addAlert"
-      >{{ alertBusy ? '添加中…' : '添加提醒' }}</button>
-    </div>
-    <div v-if="alertsStore.error" class="error-banner">
-      <span>{{ alertsStore.error }}</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data">
-        <thead>
-          <tr>
-            <th>饰品</th><th>平台</th><th>条件</th><th class="num-head">阈值</th><th>状态</th><th></th>
-          </tr>
-        </thead>
-        <tbody v-if="alertsStore.loading">
-          <tr><td colspan="6"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
-        </tbody>
-        <tbody v-else>
-          <tr v-for="a in alertsStore.alerts" :key="a.id">
-            <td>{{ a.itemNameZh ?? a.itemName }}</td>
-            <td><span class="badge badge-muted mono">{{ a.platform }}</span></td>
-            <td>{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
-            <td class="num">{{ formatMoney(a.threshold) }}</td>
-            <td>
-              <span v-if="a.triggeredAt" class="badge badge-accent">已触发 {{ formatDateTime(a.triggeredAt) }}</span>
-              <span v-else class="badge badge-muted">监控中</span>
-            </td>
-            <td class="row-actions">
-              <button type="button" class="btn btn-ghost btn-sm" @click="alertsStore.resetAlert(a.id)">重置</button>
-              <button type="button" class="btn btn-ghost btn-sm danger-text" @click="deleteAlertTarget = a">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="!alertsStore.loading && alertsStore.alerts.length === 0" class="empty-state compact">
-      <p>还没有价格提醒。添加后，每次“刷新行情”会自动检查是否触发。</p>
-    </div>
-    <ConfirmDialog
-      v-if="deleteAlertTarget"
-      title="删除提醒"
-      :message="`确认删除「${deleteAlertTarget.itemNameZh ?? deleteAlertTarget.itemName}」的价格提醒？`"
-      confirm-text="删除"
-      danger
-      @confirm="confirmDeleteAlert"
-      @cancel="deleteAlertTarget = null"
-    />
-    <ConfirmDialog
-      v-if="deleteAlertTarget"
-      title="删除提醒"
-      :message="`确认删除「${deleteAlertTarget.itemNameZh ?? deleteAlertTarget.itemName}」的价格提醒？`"
-      confirm-text="删除"
-      danger
-      @confirm="confirmDeleteAlert"
-      @cancel="deleteAlertTarget = null"
-    />
   </div>
 </template>
 
@@ -402,18 +266,18 @@ onMounted(loadAll)
 .head-actions { display: inline-flex; gap: 8px; margin-bottom: 16px; }
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
 .metric { padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.metric-primary { background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); border-color: #c7d9fb; }
 .metric-label { font-size: 12px; font-weight: 550; color: var(--text-secondary); }
 .metric-value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
 .metric-sub { font-size: 12px; color: var(--text-muted); }
 .metric-sub b { font-weight: 600; }
+.up { color: var(--success); }
+.down { color: var(--danger); }
 .hint-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid #c7d9fb; color: var(--text-secondary); font-size: 13px; }
 .hint-banner.ok { background: var(--success-soft); border-color: #b8e3c6; }
-.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.section-head h2 { margin: 0; }
 .hint-banner.warn { background: #fff7e6; border-color: #f5c77b; color: #7a4f01; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
-.hint-banner.warn { background: #fff7e6; border-color: #f5c77b; color: #7a4f01; }
 .chart-bar { position: relative; }
 .period-group { position: absolute; top: 14px; right: 16px; z-index: 2; display: inline-flex; gap: 4px; }
 .chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
@@ -424,10 +288,6 @@ table.data td.up { color: var(--success); font-weight: 600; }
 table.data td.down { color: var(--danger); font-weight: 600; }
 .text-muted { color: var(--text-muted); }
 .row-actions { text-align: right; white-space: nowrap; }
-.alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.alert-bar .item-select { flex: 1; min-width: 220px; }
-.danger-text { color: var(--danger) !important; }
-.empty-state.compact { padding: 12px; }
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
 }

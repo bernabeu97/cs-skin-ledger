@@ -44,6 +44,9 @@ class TradeItemWearControllerTest {
     private com.cs.skinledger.repository.OtherCostRepository otherCostRepository;
 
     @Autowired
+    private com.cs.skinledger.repository.SettingRepository settingRepository;
+
+    @Autowired
     private com.cs.skinledger.repository.LotRepository lotRepository;
 
     @BeforeEach
@@ -51,6 +54,7 @@ class TradeItemWearControllerTest {
         tradeRepository.deleteAll();
         lotRepository.deleteAll();
         otherCostRepository.deleteAll();
+        settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
     }

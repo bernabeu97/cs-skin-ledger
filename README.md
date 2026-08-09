@@ -127,3 +127,8 @@ docker compose up -d --build
 - 统计口径：其他收支净额 = 收入 − 支出；仪表盘「已实现盈亏」旁显示含其他收支，另有「其他收支净额」卡片。
 - 接口：/api/costs（GET/POST/PUT/DELETE）、/api/costs/summary、/api/costs/export。
 - 存量数据：驾驶手套深红织物预售赔偿 -700、UU 会员费 -999/-88、沙漠之鹰古铜密码撤回获赔 +325 已录入（来源行号 source_ref 幂等）。
+
+## 设置与平台费率
+- 导航「设置」（/settings）：配置 Steam/UU/BUFF 手续费率（默认 15% / 0.5% / 2.5%），保存后卖出表单按「出售价 × 费率」自动带出建议手续费（可手动修改）。
+- 接口：GET/PUT /api/settings/fees（存于 settings 表，key=fees）。
+- 仪表盘首卡为「总盈亏 = 已实现盈亏 + 其他收支净额」；价格提醒在账本页 Tab 中管理。

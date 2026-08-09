@@ -184,3 +184,10 @@ export const COST_CATEGORY_LABELS: Record<CostCategory, string> = {
   refund: '退款',
   other: '其他'
 }
+
+// ===== 平台费率设置 =====
+export interface FeeSettings {
+  steam: number
+  uu: number
+  buff: number
+}

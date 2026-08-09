@@ -1,0 +1,39 @@
+import { ref } from 'vue'
+import { defineStore } from 'pinia'
+import { api, errorMessage } from '../api/client'
+import type { FeeSettings } from '../types'
+
+export const useSettingsStore = defineStore('settings', () => {
+  const fees = ref<FeeSettings | null>(null)
+  const loading = ref(false)
+  const error = ref('')
+
+  async function loadFees() {
+    loading.value = true
+    error.value = ''
+    try {
+      const { data } = await api.get<FeeSettings>('/settings/fees')
+      fees.value = data
+    } catch (e) {
+      error.value = errorMessage(e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function saveFees(payload: FeeSettings) {
+    const { data } = await api.put<FeeSettings>('/settings/fees', payload)
+    fees.value = data
+  }
+
+  /** 某平台费率（0.005 = 0.5%），未知平台返回 0 */
+  function rateFor(platform: string): number {
+    if (!fees.value) return 0
+    if (platform === 'steam') return fees.value.steam
+    if (platform === 'uu') return fees.value.uu
+    if (platform === 'buff') return fees.value.buff
+    return 0
+  }
+
+  return { fees, loading, error, loadFees, saveFees, rateFor }
+})

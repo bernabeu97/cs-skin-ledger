@@ -31,6 +31,9 @@ class CostServiceTest {
     private CostService costService;
     @Autowired
     private OtherCostRepository otherCostRepository;
+
+    @Autowired
+    private com.cs.skinledger.repository.SettingRepository settingRepository;
     @Autowired
     private TradeRepository tradeRepository;
     @Autowired
@@ -47,6 +50,7 @@ class CostServiceTest {
     @BeforeEach
     void setUp() {
         otherCostRepository.deleteAll();
+        settingRepository.deleteAll();
         snapshotRepository.deleteAll();
         alertRepository.deleteAll();
         lotRepository.deleteAll();
