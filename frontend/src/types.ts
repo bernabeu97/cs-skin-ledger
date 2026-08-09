@@ -139,3 +139,48 @@ export interface PriceAlert {
   enabled: boolean
   triggeredAt: string | null
 }
+
+// ===== 其他收支 =====
+export type CostCategory = 'membership' | 'platform_fee' | 'compensation_expense' | 'compensation_income' | 'refund' | 'other'
+export type CostDirection = 'expense' | 'income'
+
+export interface OtherCost {
+  id: number
+  category: CostCategory
+  direction: CostDirection
+  amount: number
+  occurredAt: string
+  platform: string | null
+  itemId: number | null
+  itemName: string | null
+  itemNameZh: string | null
+  note: string | null
+  sourceRef: string | null
+}
+
+export interface CostRequest {
+  category: CostCategory
+  direction: CostDirection
+  amount: number
+  occurredAt: string
+  platform?: string
+  itemId?: number
+  note?: string
+  sourceRef?: string
+}
+
+export interface CostSummary {
+  totalIncome: number
+  totalExpense: number
+  net: number
+  byCategory: Array<{ category: CostCategory; income: number; expense: number; net: number }>
+}
+
+export const COST_CATEGORY_LABELS: Record<CostCategory, string> = {
+  membership: '会员费',
+  platform_fee: '平台服务费',
+  compensation_expense: '赔偿支出',
+  compensation_income: '赔偿收入',
+  refund: '退款',
+  other: '其他'
+}

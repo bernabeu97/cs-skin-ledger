@@ -119,3 +119,11 @@ docker compose up -d --build
 - 单价口径：buyPrice/sellPrice 为单件单价，quantity 表达数量；盈亏=数量×卖出价−手续费−数量×买入价。
 - `lots.source_ref` 幂等去重（Excel 导入用 `xls:行号`），重复导入自动跳过。
 - Excel 解析脚本：work/uu_import/parse_excel.py；原始抓取数据存档在 work/uu_import/。
+
+## 其他收支（会员费 / 赔偿 / 退款等）
+
+- 页面：导航「其他收支」（/costs），6 类：会员费 / 平台服务费 / 赔偿支出 / 赔偿收入 / 退款 / 其他。
+- 每条记录：分类、方向（支出/收入）、金额、时间、平台、可选关联饰品、备注；支持增删改、筛选、CSV/Excel/JSON 导出。
+- 统计口径：其他收支净额 = 收入 − 支出；仪表盘「已实现盈亏」旁显示含其他收支，另有「其他收支净额」卡片。
+- 接口：/api/costs（GET/POST/PUT/DELETE）、/api/costs/summary、/api/costs/export。
+- 存量数据：驾驶手套深红织物预售赔偿 -700、UU 会员费 -999/-88、沙漠之鹰古铜密码撤回获赔 +325 已录入（来源行号 source_ref 幂等）。

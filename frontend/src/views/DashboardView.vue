@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router'
 import PnlChart from '../components/PnlChart.vue'
 import { useLotsStore } from '../stores/lots'
 import { useAlertsStore } from '../stores/alerts'
+import { useCostsStore } from '../stores/costs'
 import ItemSelect from '../components/ItemSelect.vue'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
 import type { HoldingValuation, Item } from '../types'
 
 const store = useLotsStore()
 const alertsStore = useAlertsStore()
+const costsStore = useCostsStore()
 const router = useRouter()
 
 const PERIODS = [
@@ -62,7 +64,8 @@ async function loadAll() {
       store.loadLots({ status: 'HOLDING' }),
       store.loadValuation(),
       store.loadPriceConfig(),
-      alertsStore.loadAlerts()
+      alertsStore.loadAlerts(),
+      costsStore.loadSummary()
     ])
   } finally {
     refreshing.value = false
@@ -164,6 +167,7 @@ onMounted(loadAll)
           <template v-if="monthRealized !== null">
             · 本月 <b :class="monthRealized >= 0 ? 'up' : 'down'">{{ formatSignedMoney(monthRealized) }}</b>
           </template>
+          · 含其他收支 <b :class="(costsStore.summary?.net ?? 0) >= 0 ? 'up' : 'down'">{{ formatSignedMoney(costsStore.summary?.net ?? 0) }}</b>
         </span>
       </div>
       <div class="card metric">
@@ -180,6 +184,13 @@ onMounted(loadAll)
           按最新行情价 × 数量
           <template v-if="store.valuation?.priceAsOf">· {{ formatDateTime(store.valuation.priceAsOf) }}</template>
         </span>
+      </div>
+      <div class="card metric">
+        <span class="metric-label">其他收支净额</span>
+        <div class="metric-value num" :class="(costsStore.summary?.net ?? 0) >= 0 ? 'up' : 'down'">
+          {{ formatSignedMoney(costsStore.summary?.net ?? 0) }}
+        </div>
+        <span class="metric-sub">会员费 / 赔偿等非饰品收支（收入 {{ formatMoney(costsStore.summary?.totalIncome ?? 0) }} · 支出 {{ formatMoney(costsStore.summary?.totalExpense ?? 0) }}）</span>
       </div>
       <div class="card metric">
         <span class="metric-label">浮动盈亏</span>
@@ -326,7 +337,7 @@ onMounted(loadAll)
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .page-head h1 { margin-bottom: 16px; }
 .head-actions { display: inline-flex; gap: 8px; margin-bottom: 16px; }
-.cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
 .metric { padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 .metric-label { font-size: 12px; font-weight: 550; color: var(--text-secondary); }
 .metric-value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }

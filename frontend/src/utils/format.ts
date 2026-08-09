@@ -1,6 +1,6 @@
 export function formatMoney(n: number | null | undefined): string {
   if (n === null || n === undefined || Number.isNaN(n)) return '-'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function formatSignedMoney(n: number | null | undefined): string {

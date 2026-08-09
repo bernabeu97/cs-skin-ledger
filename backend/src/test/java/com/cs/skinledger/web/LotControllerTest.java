@@ -41,12 +41,16 @@ class LotControllerTest {
     private com.cs.skinledger.repository.AlertRepository alertRepository;
 
     @Autowired
+    private com.cs.skinledger.repository.OtherCostRepository otherCostRepository;
+
+    @Autowired
     private com.cs.skinledger.repository.TradeRepository tradeRepository;
 
     @BeforeEach
     void cleanDatabase() {
         tradeRepository.deleteAll();
         lotRepository.deleteAll();
+        otherCostRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
     }
