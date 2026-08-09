@@ -1,15 +1,15 @@
 package com.cs.skinledger.dto;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * UU 库存/交易批量导入请求。
- * holdings：当前库存（转为 HOLDING 批次）；sales：已成交卖出（转为 SOLD 批次）。
+ * 账本批量导入请求（UU 抓取 / Excel 文件）。
+ * holdings：当前持有（转为 HOLDING 批次）；sales：已成交卖出（转为 SOLD 批次）。
+ * 注意：buyPrice/sellPrice 为「单件单价」，数量由 quantity 表达；盈亏=数量×卖出价−手续费−数量×买入价。
  */
 public record UuImportRequest(
         @Valid List<HoldingImport> holdings,
@@ -25,6 +25,8 @@ public record UuImportRequest(
             BigDecimal buyPrice,
             BigDecimal marketPrice,
             String buyTime,
+            String buyPlatform,
+            String sourceRef,
             String note) {
     }
 
@@ -33,9 +35,15 @@ public record UuImportRequest(
             String itemName,
             String itemNameZh,
             String wear,
+            @Positive BigDecimal quantity,
+            BigDecimal buyPrice,
+            String buyTime,
+            String buyPlatform,
             @Positive BigDecimal sellPrice,
             BigDecimal fee,
             String sellTime,
+            String sellPlatform,
+            String sourceRef,
             String note) {
     }
 }

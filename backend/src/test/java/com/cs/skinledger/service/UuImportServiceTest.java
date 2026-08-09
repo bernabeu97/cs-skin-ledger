@@ -35,9 +35,9 @@ class UuImportServiceTest {
     @Autowired
     private AlertRepository alertRepository;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
     private PriceSnapshotRepository snapshotRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     private Item item;
 
@@ -64,27 +64,29 @@ class UuImportServiceTest {
                 List.of(new UuImportRequest.HoldingImport(
                         item.getId(), "AK-47 | Test Import", "AK-47 | 测试导入", "久经沙场",
                         new BigDecimal("0.25"), new BigDecimal("2"), new BigDecimal("100"),
-                        new BigDecimal("120"), "2026-08-01 10:00:00", null)),
+                        new BigDecimal("120"), "2026-08-01 10:00:00", "uu", "xls:h:2", null)),
                 List.of(new UuImportRequest.SaleImport(
                         item.getId(), "AK-47 | Test Import", "AK-47 | 测试导入", "久经沙场",
-                        new BigDecimal("150"), new BigDecimal("3"), "2026-08-02 10:00:00", null)));
+                        new BigDecimal("2"), new BigDecimal("100"), "2026-08-01 10:00:00", "uu",
+                        new BigDecimal("150"), new BigDecimal("3"), "2026-08-02 10:00:00", "uu", "xls:s:3", null)));
 
-        long userId = userRepository.findByUsername("local").orElseThrow().getId();
         UuImportResult first = uuImportService.importData(req);
         assertEquals(1, first.holdingsImported());
         assertEquals(1, first.salesImported());
 
+        long userId = userRepository.findByUsername("local").orElseThrow().getId();
         Lot holding = lotRepository.findByUserIdOrderByBuyTimeAsc(userId).stream()
                 .filter(l -> l.getStatus() == LotStatus.HOLDING).findFirst().orElseThrow();
         assertEquals(0, new BigDecimal("100").compareTo(holding.getBuyPrice()));
         assertEquals("久经沙场", holding.getExterior());
         assertEquals(0, new BigDecimal("0.25").compareTo(holding.getFloatValue()));
         assertEquals(0, new BigDecimal("2").compareTo(holding.getQuantity()));
+        assertEquals("uu", holding.getBuyPlatform());
 
         Lot sold = lotRepository.findByUserIdOrderByBuyTimeAsc(userId).stream()
                 .filter(l -> l.getStatus() == LotStatus.SOLD).findFirst().orElseThrow();
-        assertEquals(0, new BigDecimal("147").compareTo(sold.getActualIncome())); // 150 - 3
-        assertEquals(0, new BigDecimal("147").compareTo(sold.getProfit()));       // 买入价 0
+        assertEquals(0, new BigDecimal("297").compareTo(sold.getActualIncome())); // 2*150 - 3
+        assertEquals(0, new BigDecimal("97").compareTo(sold.getProfit()));       // 297 - 2*100
 
         UuImportResult second = uuImportService.importData(req);
         assertEquals(1, second.holdingsSkippedDuplicates());

@@ -115,6 +115,7 @@ docker compose up -d --build
 
 通过浏览器已登录的 UU 会话抓取（脚本流程见 docs/PROBLEMS.md），数据经 `POST /api/sync/uu/import` 导入：
 
-- 库存 → HOLDING 批次（饰品/磨损/浮点/数量/购入价），`lots.source_ref` 幂等去重，重复导入自动跳过。
-- 卖出 → SOLD 批次（卖出价/手续费/时间，买入价未知记为 0，需编辑补填）。
-- 原始抓取数据存档在 work/uu_import/。
+- 库存/Excel → HOLDING 批次（饰品/磨损/数量/买入价），卖出 → SOLD 批次（卖出价/手续费/时间）。
+- 单价口径：buyPrice/sellPrice 为单件单价，quantity 表达数量；盈亏=数量×卖出价−手续费−数量×买入价。
+- `lots.source_ref` 幂等去重（Excel 导入用 `xls:行号`），重复导入自动跳过。
+- Excel 解析脚本：work/uu_import/parse_excel.py；原始抓取数据存档在 work/uu_import/。

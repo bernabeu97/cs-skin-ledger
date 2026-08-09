@@ -21,10 +21,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * UU 库存/交易导入：
- * - holdings：库存中的饰品 -> HOLDING 批次（购入价缺失记为 0，备注提示补填）
- * - sales：已成交卖出 -> SOLD 批次（买入价未知记为 0，需用户补填买入价后盈亏才准确）
+ * 账本批量导入（UU 抓取 / Excel）：
+ * - holdings：持有中的饰品 -> HOLDING 批次
+ * - sales：已成交卖出 -> SOLD 批次（买入信息缺失时记为 0/导入时间，备注提示补填）
  * 通过 lots.source_ref 唯一约束幂等，重复导入自动跳过。
+ * buyPrice/sellPrice 均为单件单价。
  */
 @Service
 @RequiredArgsConstructor
@@ -48,7 +49,10 @@ public class UuImportService {
         int hImported = 0;
         int hSkip = 0;
         for (UuImportRequest.HoldingImport h : req.holdings() == null ? List.<UuImportRequest.HoldingImport>of() : req.holdings()) {
-            String sourceRef = "uu:inv:" + safe(h.itemName()) + ":" + safe(h.wear()) + ":" + (h.floatValue() == null ? "" : h.floatValue().toPlainString()) + ":" + h.quantity();
+            BigDecimal qty = h.quantity() == null ? BigDecimal.ONE : h.quantity();
+            String sourceRef = h.sourceRef() == null || h.sourceRef().isBlank()
+                    ? "imp:h:" + safe(h.itemName()) + ":" + safe(h.wear()) + ":" + qty.toPlainString() + ":" + safe(h.buyTime())
+                    : h.sourceRef().trim();
             if (lotRepository.existsBySourceRef(sourceRef)) {
                 hSkip++;
                 continue;
@@ -58,17 +62,17 @@ public class UuImportService {
                 Lot lot = new Lot();
                 lot.setUser(user);
                 lot.setItem(item);
-                lot.setQuantity(h.quantity() == null ? BigDecimal.ONE : h.quantity());
+                lot.setQuantity(qty);
                 lot.setExterior(h.wear());
                 lot.setFloatValue(h.floatValue());
                 lot.setBuyPrice(h.buyPrice() == null ? BigDecimal.ZERO : h.buyPrice());
                 lot.setBuyTime(parseTime(h.buyTime(), LocalDateTime.now()));
-                lot.setBuyPlatform("uu");
+                lot.setBuyPlatform(h.buyPlatform() == null || h.buyPlatform().isBlank() ? "未知" : h.buyPlatform().trim());
                 lot.setStatus(LotStatus.HOLDING);
                 lot.setSourceRef(sourceRef);
-                StringBuilder note = new StringBuilder("UU 库存导入");
+                StringBuilder note = new StringBuilder("Excel/UU 导入");
                 if (h.buyPrice() == null) {
-                    note.append("；购入价未知，已记为 0，请编辑补填");
+                    note.append("；买入价未知，已记为 0，请编辑补填");
                 }
                 if (h.buyTime() == null) {
                     note.append("；买入时间未知，记为导入时间");
@@ -80,7 +84,7 @@ public class UuImportService {
                 lotRepository.save(lot);
                 hImported++;
             } catch (Exception e) {
-                errors.add("库存[" + h.itemName() + "]: " + e.getMessage());
+                errors.add("持有[" + h.itemName() + "]: " + e.getMessage());
             }
         }
 
@@ -88,31 +92,40 @@ public class UuImportService {
         int sImported = 0;
         int sSkip = 0;
         for (UuImportRequest.SaleImport s : req.sales() == null ? List.<UuImportRequest.SaleImport>of() : req.sales()) {
-            String sourceRef = "uu:sale:" + safe(s.itemName()) + ":" + safe(s.sellTime());
+            String sourceRef = s.sourceRef() == null || s.sourceRef().isBlank()
+                    ? "imp:s:" + safe(s.itemName()) + ":" + safe(s.wear()) + ":" + safe(s.sellTime())
+                    : s.sourceRef().trim();
             if (lotRepository.existsBySourceRef(sourceRef)) {
                 sSkip++;
                 continue;
             }
             try {
                 Item item = resolveItem(s.itemId(), s.itemName(), s.itemNameZh());
+                BigDecimal qty = s.quantity() == null ? BigDecimal.ONE : s.quantity();
+                BigDecimal buyPrice = s.buyPrice() == null ? BigDecimal.ZERO : s.buyPrice();
+                LocalDateTime sellTime = parseTime(s.sellTime(), null);
+                LocalDateTime buyTime = parseTime(s.buyTime(), sellTime == null ? LocalDateTime.now() : sellTime);
                 Lot lot = new Lot();
                 lot.setUser(user);
                 lot.setItem(item);
-                lot.setQuantity(BigDecimal.ONE);
+                lot.setQuantity(qty);
                 lot.setExterior(s.wear());
-                lot.setBuyPrice(BigDecimal.ZERO);
-                lot.setBuyTime(parseTime(s.sellTime(), LocalDateTime.now()));
-                lot.setBuyPlatform("uu");
+                lot.setBuyPrice(buyPrice);
+                lot.setBuyTime(buyTime);
+                lot.setBuyPlatform(s.buyPlatform() == null || s.buyPlatform().isBlank() ? "未知" : s.buyPlatform().trim());
                 lot.setSellPrice(s.sellPrice());
-                lot.setSellTime(parseTime(s.sellTime(), null));
-                lot.setSellPlatform("uu");
+                lot.setSellTime(sellTime);
+                lot.setSellPlatform(s.sellPlatform() == null || s.sellPlatform().isBlank() ? "未知" : s.sellPlatform().trim());
                 lot.setFee(s.fee() == null ? BigDecimal.ZERO : s.fee());
-                BigDecimal income = lot.getQuantity().multiply(lot.getSellPrice()).subtract(lot.getFee());
+                BigDecimal income = qty.multiply(lot.getSellPrice()).subtract(lot.getFee());
                 lot.setActualIncome(income);
-                lot.setProfit(income.subtract(lot.getQuantity().multiply(lot.getBuyPrice())));
+                lot.setProfit(income.subtract(qty.multiply(buyPrice)));
                 lot.setStatus(LotStatus.SOLD);
                 lot.setSourceRef(sourceRef);
-                StringBuilder note = new StringBuilder("UU 交易导入（卖出）；买入价未知，记为 0，请编辑补填后盈亏才准确");
+                StringBuilder note = new StringBuilder("Excel/UU 导入（卖出）");
+                if (s.buyPrice() == null) {
+                    note.append("；买入价未知，已记为 0，请编辑补填后盈亏才准确");
+                }
                 if (s.note() != null && !s.note().isBlank()) {
                     note.append("；").append(s.note());
                 }
@@ -148,7 +161,7 @@ public class UuImportService {
                     Item item = new Item();
                     item.setMarketHashName(marketHashName);
                     item.setNameZh(nameZh);
-                    item.setSource("uu");
+                    item.setSource("manual");
                     return itemRepository.save(item);
                 });
     }
