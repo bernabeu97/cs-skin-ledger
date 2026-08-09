@@ -5,6 +5,7 @@ import com.cs.skinledger.dto.PriceQuote;
 import com.cs.skinledger.dto.PriceTarget;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ import java.util.Map;
  * 文档：https://docs.csqaq.com
  * 需要免费注册 https://csqaq.com 获取 ApiToken 并绑定本机 IP 白名单。
  */
+@Slf4j
 @Component
 public class CsqaqPriceProvider implements PriceProvider {
 
@@ -59,6 +61,7 @@ public class CsqaqPriceProvider implements PriceProvider {
             throw new IllegalStateException("CSQAQ ApiToken 未配置，请在 application.yml 或环境变量 CSQAQ_TOKEN 中配置");
         }
         List<PriceQuote> quotes = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         String url = props.getCsqaq().getBaseUrl() + "/api/v1/goods/getPriceByMarketHashName";
         for (int i = 0; i < targets.size(); i += BATCH_SIZE) {
@@ -68,25 +71,46 @@ public class CsqaqPriceProvider implements PriceProvider {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(props.getCsqaq().getTimeoutSeconds()))
                     .header("Content-Type", "application/json")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+                    .header("Accept", "application/json, text/plain, */*")
                     .header("ApiToken", props.getCsqaq().getApiToken())
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
-            JsonNode root = mapper.readTree(resp.body());
-            int code = root.path("code").asInt(-1);
-            if (code != 200) {
-                throw new IllegalStateException("CSQAQ 返回失败: code=" + code + ", msg=" + root.path("msg").asText());
-            }
-            JsonNode success = root.path("data").path("success");
-            for (PriceTarget t : batch) {
-                JsonNode node = success.get(t.fullMarketHashName());
-                if (node == null || node.isNull() || node.isMissingNode()) {
-                    continue;
+            // CSQAQ 限流较严：单个批次失败重试 2 次，批次之间间隔 1.5s，失败不中断后续批次
+            boolean batchOk = false;
+            for (int attempt = 1; attempt <= 3 && !batchOk; attempt++) {
+                try {
+                    HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
+                    JsonNode root = mapper.readTree(resp.body());
+                    int code = root.path("code").asInt(-1);
+                    if (code != 200) {
+                        throw new IllegalStateException("CSQAQ 返回失败: code=" + code + ", msg=" + root.path("msg").asText());
+                    }
+                    JsonNode success = root.path("data").path("success");
+                    for (PriceTarget t : batch) {
+                        JsonNode node = success.get(t.fullMarketHashName());
+                        if (node == null || node.isNull() || node.isMissingNode()) {
+                            continue;
+                        }
+                        addQuote(quotes, t, "steam", node.get("steamSellPrice"), node.get("steamSellNum"), now);
+                        addQuote(quotes, t, "uu", node.get("yyypSellPrice"), node.get("yyypSellNum"), now);
+                        addQuote(quotes, t, "buff", node.get("buffSellPrice"), node.get("buffSellNum"), now);
+                    }
+                    batchOk = true;
+                } catch (Exception e) {
+                    if (attempt >= 3) {
+                        errors.add("CSQAQ 批次" + (i / BATCH_SIZE + 1) + " 失败: " + e.getMessage());
+                    } else {
+                        Thread.sleep(2000L * attempt);
+                    }
                 }
-                addQuote(quotes, t, "steam", node.get("steamSellPrice"), node.get("steamSellNum"), now);
-                addQuote(quotes, t, "uu", node.get("yyypSellPrice"), node.get("yyypSellNum"), now);
-                addQuote(quotes, t, "buff", node.get("buffSellPrice"), node.get("buffSellNum"), now);
             }
+            if (i + BATCH_SIZE < targets.size()) {
+                Thread.sleep(1500);
+            }
+        }
+        if (!errors.isEmpty()) {
+            log.warn("CSQAQ 部分批次失败（已跳过）：{}", String.join("；", errors));
         }
         return quotes;
     }

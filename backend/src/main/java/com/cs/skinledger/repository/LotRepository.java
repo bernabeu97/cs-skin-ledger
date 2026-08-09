@@ -8,4 +8,6 @@ import java.util.List;
 
 public interface LotRepository extends JpaRepository<Lot, Long>, JpaSpecificationExecutor<Lot> {
     List<Lot> findByUserIdOrderByBuyTimeAsc(Long userId);
+
+    boolean existsBySourceRef(String sourceRef);
 }

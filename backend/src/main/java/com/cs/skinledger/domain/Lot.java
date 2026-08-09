@@ -80,6 +80,9 @@ public class Lot {
     @Column(length = 500)
     private String note;
 
+    @Column(name = "source_ref", length = 128)
+    private String sourceRef;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

@@ -110,3 +110,11 @@ docker compose up -d --build
 - 后端 API 由 Nginx 反代到 8080，前端静态文件由 Nginx 托管（SPA 路由已配置）。
 - 数据卷 `mysql_data` 持久化数据库；升级后重新 `docker compose up -d --build` 即可，Flyway 自动迁移。
 - 注意：CSQAQ ApiToken 绑定注册时的 IP 白名单，部署环境需各自注册/绑定。
+
+## UU（悠悠有品）库存/交易导入
+
+通过浏览器已登录的 UU 会话抓取（脚本流程见 docs/PROBLEMS.md），数据经 `POST /api/sync/uu/import` 导入：
+
+- 库存 → HOLDING 批次（饰品/磨损/浮点/数量/购入价），`lots.source_ref` 幂等去重，重复导入自动跳过。
+- 卖出 → SOLD 批次（卖出价/手续费/时间，买入价未知记为 0，需编辑补填）。
+- 原始抓取数据存档在 work/uu_import/。
