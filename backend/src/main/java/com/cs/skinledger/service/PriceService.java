@@ -68,6 +68,10 @@ public class PriceService {
         }
         int requested = targets.size();
 
+        long noWear = targets.stream().filter(t -> t.exterior() == null || t.exterior().isBlank()).count();
+        if (noWear > 0) {
+            errors.add(noWear + " 个批次未填写磨损等级，无法匹配平台价格（请先编辑补全）");
+        }
         if (!targets.isEmpty()) {
             List<PriceProvider> usable = selectProviders(wanted);
             if (usable.isEmpty()) {

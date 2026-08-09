@@ -3,11 +3,9 @@
 > 记录推进过程中遇到的阻塞、限制与待办，完成后逐条勾掉。
 
 ## 待用户提供 / 需外部操作
-- [ ] **CSQAQ ApiToken 未配置**：行情主数据源需要免费注册 https://csqaq.com 获取 token，
-      绑定本机出口 IP 白名单，然后设置环境变量 `CSQAQ_TOKEN`（或 application.yml）并重启后端。
-      配置后“刷新行情”即可一次拿到 UU/Steam/BUFF 三平台价格。
-- [ ] **测试数据核对**：`AK-47 | Hydroponic` 的持有记录没有填写磨损等级（exterior 为空），
-      无法拼出完整市场名查价。请用“编辑”补上磨损等级（如 久经沙场）再刷新行情。
+- [x] **CSQAQ ApiToken 已配置**（2026-08-09）：token 存于 git 忽略的 `work/csqaq_token.txt`，
+      启动脚本 `scripts/start-backend.ps1` 自动读取并注入 `CSQAQ_TOKEN`；刷新行情已实测返回 UU/BUFF 价格。
+- [x] **测试数据磨损已补**（2026-08-09）：`AK-47 | Hydroponic` 已填写“略有磨损”，行情可正常匹配。
 
 ## 平台接口限制（已用替代方案）
 - [ ] **UU(youpin898) 直连被阿里云 WAF 拦截（403）**：api.youpin898.com 需要 App 登录 token 且风控严格，
