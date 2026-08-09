@@ -111,4 +111,16 @@ class PriceServiceTest {
         assertNull(v.rows().get(0).unrealizedPnl());
         assertEquals(BigDecimal.ZERO, v.marketValue());
     }
+
+    @Test
+    void valuationUsesUuOnlyAndIgnoresSteamBuffFallback() {
+        holdingLot(new BigDecimal("1"), new BigDecimal("100"));
+        snapshot("steam", "95");
+        snapshot("buff", "98");
+        // 没有 uu 快照时，估值不回落 steam/buff
+        PortfolioValuation v = priceService.valuation();
+        assertNull(v.rows().get(0).currentPrice());
+        assertNull(v.rows().get(0).unrealizedPnl());
+        assertEquals(BigDecimal.ZERO, v.marketValue());
+    }
 }

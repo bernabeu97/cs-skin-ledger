@@ -40,8 +40,8 @@ import java.util.stream.Collectors;
 public class PriceService {
 
     private static final long LOCAL_USER_ID = 1L;
-    /** 估值时平台优先级：UU 优先，其次 Steam，再次 BUFF */
-    private static final List<String> PRICE_PRIORITY = List.of("uu", "steam", "buff");
+    /** 估值统一以 UU（悠悠有品）价格为准；无 UU 价的批次不估值，不回退 Steam/BUFF */
+    private static final List<String> PRICE_PRIORITY = List.of("uu");
 
     private final LotRepository lotRepository;
     private final ItemRepository itemRepository;

@@ -181,7 +181,7 @@ onMounted(loadAll)
         <div v-if="store.loadingValuation" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
         <div v-else class="metric-value num">{{ formatMoney(store.valuation?.marketValue ?? 0) }}</div>
         <span class="metric-sub">
-          按最新行情价 × 数量
+          按 UU 最新价 × 数量
           <template v-if="store.valuation?.priceAsOf">· {{ formatDateTime(store.valuation.priceAsOf) }}</template>
         </span>
       </div>
@@ -198,7 +198,7 @@ onMounted(loadAll)
         <div v-else class="metric-value num" :class="(store.valuation?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'">
           {{ formatSignedMoney(store.valuation?.unrealizedPnl ?? 0) }}
         </div>
-        <span class="metric-sub">当前市值 − 持仓成本（行情优先 UU）</span>
+        <span class="metric-sub">当前市值 − 持仓成本（统一 UU 价）</span>
       </div>
     </div>
 
@@ -222,7 +222,7 @@ onMounted(loadAll)
         <thead>
           <tr>
             <th>饰品</th><th>磨损</th><th class="num-head">数量</th><th class="num-head">买入价</th>
-            <th class="num-head">UU 价</th><th class="num-head">Steam 价</th><th class="num-head">当前价</th>
+            <th class="num-head">UU 价</th><th class="num-head">Steam 价</th><th class="num-head">当前价(UU)</th>
             <th class="num-head">浮动盈亏</th><th class="num-head">买入时间</th><th>买入平台</th><th></th>
           </tr>
         </thead>
