@@ -7,7 +7,7 @@ import { formatMoney } from '../utils/format'
 
 const DEFAULT_WEARS = ['崭新出厂', '略有磨损', '久经沙场', '破损不堪', '战痕累累']
 
-const props = defineProps<{ editing: Lot | null; saving: boolean }>()
+const props = defineProps<{ editing: Lot | null; saving: boolean; attention?: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', payload: LotCreateRequest): void }>()
 
 const selectedItem = ref<Item | null>(null)
@@ -151,10 +151,11 @@ function submit() {
             <span>数量</span>
             <input v-model="form.quantity" class="input num" type="number" step="0.0001" min="0.0001" />
           </div>
-          <div class="field">
+          <div class="field" :class="{ 'field-attention': props.attention }">
             <span>买入价 <i class="req">*</i></span>
             <input ref="firstField" v-model="form.buyPrice" class="input num" type="number" step="0.01" min="0" @input="errors.buyPrice = undefined" />
             <p v-if="errors.buyPrice" class="field-error">{{ errors.buyPrice }}</p>
+            <p v-else-if="props.attention" class="field-hint attention-hint">该批次买入价缺失（当前为 0），请补填后盈亏才准确</p>
           </div>
           <div class="field">
             <span>买入时间 <i class="req">*</i></span>
@@ -228,6 +229,8 @@ function submit() {
 .section-hint { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 12px 20px; }
 .field .req { font-style: normal; }
+.field-attention .input { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.14); }
+.attention-hint { color: var(--accent); font-weight: 550; }
 .field-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
 .form-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-muted); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .total-preview { font-size: 13px; color: var(--text-secondary); }

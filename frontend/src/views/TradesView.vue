@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import LotForm from '../components/LotForm.vue'
 import LotTable from '../components/LotTable.vue'
@@ -29,14 +30,20 @@ const sellTarget = ref<Lot | null>(null)
 const saving = ref(false)
 const confirmTarget = ref<Lot | null>(null)
 const searchEl = ref<HTMLInputElement | null>(null)
+const pendingOnly = ref(false)
+const highlightId = ref<number | null>(null)
+const route = useRoute()
 
 const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
-  return !!q.value || !!status.value || !!platform.value || range.value === '7' || range.value === '30' || customActive
+  return !!q.value || !!status.value || !!platform.value || pendingOnly.value || range.value === '7' || range.value === '30' || customActive
 })
 
 const sortedLots = computed(() => {
-  const arr = [...store.lots]
+  let arr = [...store.lots]
+  if (pendingOnly.value) {
+    arr = arr.filter(l => l.status === 'HOLDING' && l.buyPrice === 0)
+  }
   const dir = sortDir.value === 'asc' ? 1 : -1
   arr.sort((a, b) => {
     if (sortKey.value === 'buyTime') return a.buyTime.localeCompare(b.buyTime) * dir
@@ -74,6 +81,7 @@ function resetFilters() {
   q.value = ''
   status.value = ''
   platform.value = ''
+  pendingOnly.value = false
   range.value = 'all'
   fromDate.value = ''
   toDate.value = ''
@@ -177,9 +185,29 @@ function onGlobalKey(e: KeyboardEvent) {
   }
 }
 
+function applyRouteTarget() {
+  const id = Number(route.query.lotId)
+  if (id) {
+    highlightId.value = id
+    const lot = store.lots.find(l => l.id === id)
+    if (lot && lot.status === 'HOLDING') {
+      sellTarget.value = lot
+    }
+    nextTick(() => {
+      document.querySelector(`tr[data-lot="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }
+  if (route.query.pending === '1') {
+    pendingOnly.value = true
+  }
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKey)
-  refreshAll()
+  void (async () => {
+    await refreshAll()
+    applyRouteTarget()
+  })()
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 </script>
@@ -220,6 +248,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         <option value="HOLDING">持仓中</option>
         <option value="SOLD">已卖出</option>
       </select>
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: pendingOnly }"
+        @click="pendingOnly = !pendingOnly; refreshAll()"
+      >待补填买入价</button>
       <select v-model="platform" class="select filter" @change="refreshAll">
         <option value="">全部平台</option>
         <option value="steam">Steam</option>
@@ -269,6 +303,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       :loading="store.loading"
       :sort-key="sortKey"
       :sort-dir="sortDir"
+      :highlight-id="highlightId"
       @edit="openEdit"
       @delete="requestDelete"
       @sell="sellTarget = $event"
@@ -283,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       <button v-else type="button" class="btn btn-primary" @click="openCreate">新增第一笔买入</button>
     </div>
 
-    <LotForm v-if="showBuyForm" :editing="editing" :saving="saving" @close="showBuyForm = false" @saved="onSaved" />
+    <LotForm v-if="showBuyForm" :editing="editing" :saving="saving" :attention="!!editing && editing.buyPrice === 0" @close="showBuyForm = false" @saved="onSaved" />
     <SellForm v-if="sellTarget" :lot="sellTarget" :saving="saving" @close="sellTarget = null" @saved="onSellSaved" />
     <ConfirmDialog
       v-if="confirmTarget"

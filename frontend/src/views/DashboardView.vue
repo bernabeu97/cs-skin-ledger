@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PnlChart from '../components/PnlChart.vue'
 import { useLotsStore } from '../stores/lots'
 import { useAlertsStore } from '../stores/alerts'
 import { useCostsStore } from '../stores/costs'
+import { useUiStore } from '../stores/ui'
 import ItemSelect from '../components/ItemSelect.vue'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
-import type { HoldingValuation, Item } from '../types'
+import type { HoldingValuation, Item, PriceAlert } from '../types'
 
 const store = useLotsStore()
 const alertsStore = useAlertsStore()
 const costsStore = useCostsStore()
+const ui = useUiStore()
 const router = useRouter()
 
 const PERIODS = [
@@ -29,6 +32,8 @@ const alertPlatform = ref('uu')
 const alertCondition = ref<'gt' | 'lt'>('gt')
 const alertThreshold = ref<number | null>(null)
 const alertBusy = ref(false)
+const showCompare = ref(false)
+const deleteAlertTarget = ref<PriceAlert | null>(null)
 
 const periodLabel = computed(() => PERIODS.find(p => p.v === period.value)?.label ?? '月度')
 
@@ -48,6 +53,14 @@ const valuationMap = computed(() => {
   for (const v of store.valuation?.rows ?? []) map.set(v.lotId, v)
   return map
 })
+
+const pricedCount = computed(() => (store.valuation?.rows ?? []).filter(r => r.currentPrice != null).length)
+const holdingCount = computed(() => store.summary?.holdingCount ?? 0)
+const hasAnyPrice = computed(() => pricedCount.value > 0)
+const pendingCount = computed(() => store.lots.filter(l => l.status === 'HOLDING' && l.buyPrice === 0).length)
+const marketValueText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.value) ? '-' : formatMoney(store.valuation?.marketValue ?? 0))
+const unrealizedText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.value) ? '-' : formatSignedMoney(store.valuation?.unrealizedPnl ?? 0))
+const priceMessageIsWarning = computed(() => priceMessage.value.includes('未填写磨损等级'))
 
 const priceHint = computed(() => {
   if (store.priceConfig?.csqaqConfigured) return ''
@@ -110,11 +123,23 @@ async function addAlert() {
     })
     alertItem.value = null
     alertThreshold.value = null
-    priceMessage.value = '价格提醒已添加'
+    ui.toast('success', '价格提醒已添加')
   } catch (e) {
     priceMessage.value = '添加提醒失败：' + String(e)
   } finally {
     alertBusy.value = false
+  }
+}
+
+async function confirmDeleteAlert() {
+  const target = deleteAlertTarget.value
+  deleteAlertTarget.value = null
+  if (!target) return
+  try {
+    await alertsStore.deleteAlert(target.id)
+    ui.toast('success', '提醒已删除')
+  } catch (e) {
+    ui.toast('error', String(e))
   }
 }
 
@@ -140,7 +165,17 @@ onMounted(loadAll)
       <button type="button" class="btn btn-sm" @click="refreshPrices">仍要刷新</button>
     </div>
 
-    <div v-if="priceMessage" class="hint-banner ok">
+    <div v-if="pendingCount > 0" class="hint-banner warn">
+      <span>{{ pendingCount }} 条持仓缺少买入价，浮动盈亏可能不准确，建议尽快补填。</span>
+      <button type="button" class="btn btn-sm" @click="router.push('/trades?pending=1')">去补填</button>
+    </div>
+
+    <div v-if="pendingCount > 0" class="hint-banner warn">
+      <span>{{ pendingCount }} 条持仓缺少买入价，浮动盈亏可能不准确，建议尽快补填。</span>
+      <button type="button" class="btn btn-sm" @click="router.push('/trades?pending=1')">去补填</button>
+    </div>
+
+    <div v-if="priceMessage" class="hint-banner" :class="priceMessageIsWarning ? 'warn' : 'ok'">
       <span>{{ priceMessage }}</span>
     </div>
 
@@ -179,7 +214,7 @@ onMounted(loadAll)
       <div class="card metric">
         <span class="metric-label">当前市值</span>
         <div v-if="store.loadingValuation" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
-        <div v-else class="metric-value num">{{ formatMoney(store.valuation?.marketValue ?? 0) }}</div>
+        <div v-else class="metric-value num">{{ marketValueText }}</div>
         <span class="metric-sub">
           按 UU 最新价 × 数量
           <template v-if="store.valuation?.priceAsOf">· {{ formatDateTime(store.valuation.priceAsOf) }}</template>
@@ -196,7 +231,7 @@ onMounted(loadAll)
         <span class="metric-label">浮动盈亏</span>
         <div v-if="store.loadingValuation" class="skeleton" style="height:28px;width:120px;margin-top:8px"></div>
         <div v-else class="metric-value num" :class="(store.valuation?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'">
-          {{ formatSignedMoney(store.valuation?.unrealizedPnl ?? 0) }}
+          {{ unrealizedText }}
         </div>
         <span class="metric-sub">当前市值 − 持仓成本（统一 UU 价）</span>
       </div>
@@ -216,13 +251,23 @@ onMounted(loadAll)
       </div>
     </div>
 
-    <h2>当前持仓（待卖出）</h2>
+    <div class="section-head">
+      <div class="section-head">
+      <h2>当前持仓（待卖出）</h2>
+      <button type="button" class="chip" :class="{ active: showCompare }" @click="showCompare = !showCompare">
+        {{ showCompare ? '收起 Steam 对比' : '对比 Steam 价' }}
+      </button>
+    </div>
+      <button type="button" class="chip" :class="{ active: showCompare }" @click="showCompare = !showCompare">
+        {{ showCompare ? '收起 Steam 对比' : '对比 Steam 价' }}
+      </button>
+    </div>
     <div class="table-wrap">
       <table class="data">
         <thead>
           <tr>
             <th>饰品</th><th>磨损</th><th class="num-head">数量</th><th class="num-head">买入价</th>
-            <th class="num-head">UU 价</th><th class="num-head">Steam 价</th><th class="num-head">当前价(UU)</th>
+            <th class="num-head">UU 价</th><th v-if="showCompare" class="num-head">Steam 价</th><th class="num-head">当前价(UU)</th>
             <th class="num-head">浮动盈亏</th><th class="num-head">买入时间</th><th>买入平台</th><th></th>
           </tr>
         </thead>
@@ -239,7 +284,7 @@ onMounted(loadAll)
             <td class="num">{{ formatMoney(lot.buyPrice) }}</td>
             <template v-if="valuationMap.get(lot.id)">
               <td class="num">{{ valuationMap.get(lot.id)?.latestPrices.uu != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.uu) : '-' }}</td>
-              <td class="num">{{ valuationMap.get(lot.id)?.latestPrices.steam != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.steam) : '-' }}</td>
+              <td v-if="showCompare" class="num">{{ valuationMap.get(lot.id)?.latestPrices.steam != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.steam) : '-' }}</td>
               <td class="num">
                 <template v-if="valuationMap.get(lot.id)?.currentPrice != null">
                   {{ formatMoney(valuationMap.get(lot.id)!.currentPrice!) }}
@@ -321,7 +366,7 @@ onMounted(loadAll)
             </td>
             <td class="row-actions">
               <button type="button" class="btn btn-ghost btn-sm" @click="alertsStore.resetAlert(a.id)">重置</button>
-              <button type="button" class="btn btn-ghost btn-sm danger-text" @click="alertsStore.deleteAlert(a.id)">删除</button>
+              <button type="button" class="btn btn-ghost btn-sm danger-text" @click="deleteAlertTarget = a">删除</button>
             </td>
           </tr>
         </tbody>
@@ -330,6 +375,24 @@ onMounted(loadAll)
     <div v-if="!alertsStore.loading && alertsStore.alerts.length === 0" class="empty-state compact">
       <p>还没有价格提醒。添加后，每次“刷新行情”会自动检查是否触发。</p>
     </div>
+    <ConfirmDialog
+      v-if="deleteAlertTarget"
+      title="删除提醒"
+      :message="`确认删除「${deleteAlertTarget.itemNameZh ?? deleteAlertTarget.itemName}」的价格提醒？`"
+      confirm-text="删除"
+      danger
+      @confirm="confirmDeleteAlert"
+      @cancel="deleteAlertTarget = null"
+    />
+    <ConfirmDialog
+      v-if="deleteAlertTarget"
+      title="删除提醒"
+      :message="`确认删除「${deleteAlertTarget.itemNameZh ?? deleteAlertTarget.itemName}」的价格提醒？`"
+      confirm-text="删除"
+      danger
+      @confirm="confirmDeleteAlert"
+      @cancel="deleteAlertTarget = null"
+    />
   </div>
 </template>
 
@@ -345,6 +408,12 @@ onMounted(loadAll)
 .metric-sub b { font-weight: 600; }
 .hint-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid #c7d9fb; color: var(--text-secondary); font-size: 13px; }
 .hint-banner.ok { background: var(--success-soft); border-color: #b8e3c6; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; }
+.hint-banner.warn { background: #fff7e6; border-color: #f5c77b; color: #7a4f01; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; }
+.hint-banner.warn { background: #fff7e6; border-color: #f5c77b; color: #7a4f01; }
 .chart-bar { position: relative; }
 .period-group { position: absolute; top: 14px; right: 16px; z-index: 2; display: inline-flex; gap: 4px; }
 .chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease; }

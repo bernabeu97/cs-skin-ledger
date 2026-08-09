@@ -9,6 +9,7 @@ const props = defineProps<{
   loading: boolean
   sortKey: SortKey
   sortDir: 'asc' | 'desc'
+  highlightId?: number | null
 }>()
 const emit = defineEmits<{
   (e: 'edit', lot: Lot): void
@@ -54,12 +55,12 @@ function arrow(key: SortKey): string {
         </tr>
       </tbody>
       <tbody v-else>
-        <tr v-for="lot in lots" :key="lot.id" :class="{ sold: lot.status === 'SOLD' }">
+        <tr v-for="lot in lots" :key="lot.id" :data-lot="lot.id" :class="{ sold: lot.status === 'SOLD', highlight: lot.id === props.highlightId }">
           <td>{{ lot.itemNameZh ?? lot.itemName }}</td>
           <td>{{ lot.exterior ?? '-' }}</td>
           <td class="num">{{ lot.floatValue != null ? formatQty(lot.floatValue) : '-' }}</td>
           <td class="num">{{ formatQty(lot.quantity) }}</td>
-          <td class="num">{{ formatMoney(lot.buyPrice) }}</td>
+          <td class="num">{{ formatMoney(lot.buyPrice) }}<span v-if="lot.status === 'HOLDING' && lot.buyPrice === 0" class="badge badge-danger pending-badge">待补填</span></td>
           <td class="mono">{{ formatDateTime(lot.buyTime) }}</td>
           <td><span class="badge badge-muted mono">{{ platformLabel[lot.buyPlatform] ?? lot.buyPlatform }}</span></td>
           <td class="num">{{ lot.sellPrice != null ? formatMoney(lot.sellPrice) : '-' }}</td>
@@ -100,5 +101,7 @@ tbody tr.sold td { color: var(--text-secondary); }
 .sell-btn { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .sell-btn:hover { background: var(--accent); color: #fff; }
 .danger-text { color: var(--danger); }
+tr.highlight { background: var(--accent-soft) !important; box-shadow: inset 3px 0 0 var(--accent); }
+.pending-badge { margin-left: 6px; font-size: 11px; padding: 0 6px; }
 .danger-text:hover { background: var(--danger-soft); }
 </style>
