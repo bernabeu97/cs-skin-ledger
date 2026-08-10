@@ -42,8 +42,13 @@ public class UuImportService {
 
     @Transactional
     public UuImportResult importData(UuImportRequest req) {
+        return importDataForUser(req, currentUser.get());
+    }
+
+    /** 服务器维护任务使用：显式指定目标用户，不依赖浏览器登录态。 */
+    @Transactional
+    public UuImportResult importDataForUser(UuImportRequest req, User user) {
         List<String> errors = new ArrayList<>();
-        User user = currentUser.get();
         Long userId = user.getId();
         int hReq = req.holdings() == null ? 0 : req.holdings().size();
         int hImported = 0;

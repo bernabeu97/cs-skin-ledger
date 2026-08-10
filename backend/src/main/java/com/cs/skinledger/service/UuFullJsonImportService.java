@@ -10,7 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -21,6 +24,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.cs.skinledger.domain.User;
 
 /** 解析浏览器导出的“悠悠有品全量记录”JSON，并复用现有账本导入能力。 */
 @Service
@@ -48,7 +53,24 @@ public class UuFullJsonImportService {
             throw new IllegalArgumentException("JSON 文件不能超过 20MB");
         }
 
-        JsonNode root = objectMapper.readTree(file.getInputStream());
+        try (InputStream input = file.getInputStream()) {
+            return importStream(input, null);
+        }
+    }
+
+    /** 服务器本地维护任务使用，不开放为按用户名导入的 HTTP 接口。 */
+    public UuFullJsonImportResult importFileForUser(Path path, User user) throws IOException {
+        long size = Files.size(path);
+        if (size <= 0 || size > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("JSON 文件为空或超过 20MB");
+        }
+        try (InputStream input = Files.newInputStream(path)) {
+            return importStream(input, user);
+        }
+    }
+
+    private UuFullJsonImportResult importStream(InputStream input, User targetUser) throws IOException {
+        JsonNode root = objectMapper.readTree(input);
         JsonNode recordsNode = root.path("records");
         if (!root.isObject() || !recordsNode.isArray()) {
             throw new IllegalArgumentException("文件格式不正确：缺少 records 数组");
@@ -127,7 +149,10 @@ public class UuFullJsonImportService {
             warnings.add(unmatchedSales + " 条卖出记录在文件内找不到更早的同名买入记录，买入价记为 0，需后续补填");
         }
 
-        UuImportResult imported = uuImportService.importData(new UuImportRequest(holdings, sales));
+        UuImportRequest request = new UuImportRequest(holdings, sales);
+        UuImportResult imported = targetUser == null
+                ? uuImportService.importData(request)
+                : uuImportService.importDataForUser(request, targetUser);
         return new UuFullJsonImportResult(
                 recordsNode.size(), buys.size(), sells.size(), matchedSales, unmatchedSales, remaining.size(),
                 correctedPrices, ignored, imported.holdingsImported(), imported.holdingsSkippedDuplicates(),
