@@ -86,6 +86,23 @@ export interface ImportResult {
   errors: string[]
 }
 
+export interface UuFullJsonImportResult {
+  totalRecords: number
+  buyRecords: number
+  sellRecords: number
+  matchedSales: number
+  unmatchedSales: number
+  remainingHoldings: number
+  correctedPriceRecords: number
+  ignoredRecords: number
+  holdingsImported: number
+  holdingsSkippedDuplicates: number
+  salesImported: number
+  salesSkippedDuplicates: number
+  warnings: string[]
+  errors: string[]
+}
+
 // ===== 行情模块（M2/M3）=====
 export interface HoldingValuation {
   lotId: number

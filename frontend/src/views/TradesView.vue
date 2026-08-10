@@ -43,6 +43,8 @@ const alertCondition = ref<'gt' | 'lt'>('gt')
 const alertThreshold = ref<number | null>(null)
 const alertBusy = ref(false)
 const deleteAlertTarget = ref<PriceAlert | null>(null)
+const uuFileEl = ref<HTMLInputElement | null>(null)
+const importingUu = ref(false)
 
 const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
@@ -181,6 +183,34 @@ async function onExport(format: 'csv' | 'json' | 'xlsx') {
 function downloadTemplate() {
   const header = '饰品,磨损,磨损值,数量,买入价,买入时间,买入平台,出售价,实际收入,手续费,出售时间,出售平台,盈亏,状态,备注'
   downloadBlob(new Blob(['\uFEFF' + header + '\n'], { type: 'text/csv' }), 'lots_template.csv')
+}
+
+async function onUuJsonSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    ui.toast('error', '请选择 JSON 文件')
+    return
+  }
+  importingUu.value = true
+  try {
+    const result = await store.importUuFullJson(file)
+    const imported = result.holdingsImported + result.salesImported
+    const skipped = result.holdingsSkippedDuplicates + result.salesSkippedDuplicates
+    ui.toast('success', `UU 数据导入完成：新增 ${imported} 条，重复跳过 ${skipped} 条`, 6000)
+    if (result.unmatchedSales > 0) {
+      ui.toast('info', `${result.unmatchedSales} 条卖出缺少历史买入，买入价暂记为 0`, 7000)
+    }
+    if (result.errors.length > 0) {
+      ui.toast('error', `${result.errors.length} 条记录导入失败，请查看后端日志`, 7000)
+    }
+  } catch (e) {
+    ui.toast('error', errorMessage(e), 7000)
+  } finally {
+    importingUu.value = false
+  }
 }
 
 async function addAlert() {
@@ -327,6 +357,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       <div class="spacer"></div>
 
       <button type="button" class="btn btn-ghost btn-sm" title="下载导入模板" @click="downloadTemplate">模板</button>
+      <input ref="uuFileEl" class="visually-hidden" type="file" accept="application/json,.json" @change="onUuJsonSelected" />
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        title="导入悠悠有品全量记录 JSON（重复记录自动跳过）"
+        :disabled="importingUu"
+        @click="uuFileEl?.click()"
+      >{{ importingUu ? '导入中…' : '导入 UU JSON' }}</button>
       <div class="export-group">
         <button type="button" class="btn btn-ghost btn-sm" title="导出 CSV" @click="onExport('csv')">CSV</button>
         <button type="button" class="btn btn-ghost btn-sm" title="导出 JSON" @click="onExport('json')">JSON</button>
@@ -453,6 +491,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 </template>
 
 <style scoped>
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .count { font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 8px; }
 .hint { float: right; font-size: 12px; color: var(--text-muted); font-weight: 400; }
 kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }

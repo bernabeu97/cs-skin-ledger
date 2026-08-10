@@ -110,6 +110,7 @@ public class UuImportService {
                 lot.setItem(item);
                 lot.setQuantity(qty);
                 lot.setExterior(s.wear());
+                lot.setFloatValue(s.floatValue());
                 lot.setBuyPrice(buyPrice);
                 lot.setBuyTime(buyTime);
                 lot.setBuyPlatform(s.buyPlatform() == null || s.buyPlatform().isBlank() ? "未知" : s.buyPlatform().trim());
@@ -144,13 +145,20 @@ public class UuImportService {
             return itemRepository.findById(itemId)
                     .orElseThrow(() -> new IllegalArgumentException("饰品不存在: " + itemId));
         }
+        if (itemName != null && !itemName.isBlank()) {
+            Item exact = itemRepository.findByMarketHashName(itemName).orElse(null);
+            if (exact != null) {
+                return exact;
+            }
+        }
         if (itemNameZh != null && !itemNameZh.isBlank()) {
-            return itemRepository.findByNameZh(itemNameZh)
-                    .orElseGet(() -> findOrCreateManual(itemName, itemNameZh));
+            Item exact = itemRepository.findByNameZh(itemNameZh).orElse(null);
+            if (exact != null) {
+                return exact;
+            }
         }
         if (itemName != null && !itemName.isBlank()) {
-            return itemRepository.findByMarketHashName(itemName)
-                    .orElseGet(() -> findOrCreateManual(itemName, itemNameZh));
+            return findOrCreateManual(itemName, itemNameZh);
         }
         throw new IllegalArgumentException("缺少饰品名称");
     }

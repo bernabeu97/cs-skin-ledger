@@ -43,7 +43,7 @@ public class Lot {
     @Column(length = 16)
     private String exterior;
 
-    @Column(name = "float_value", precision = 8, scale = 4)
+    @Column(name = "float_value", precision = 21, scale = 19)
     private BigDecimal floatValue;
 
     @Column(name = "buy_price", nullable = false, precision = 18, scale = 4)

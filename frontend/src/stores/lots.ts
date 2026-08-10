@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
 import { downloadBlob } from '../utils/format'
-import type { Lot, LotCreateRequest, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult } from '../types'
+import type { Lot, LotCreateRequest, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
 
 export interface LotQuery {
   q?: string
@@ -126,10 +126,18 @@ export const useLotsStore = defineStore('lots', () => {
     downloadBlob(data, `lots.${format === 'xlsx' ? 'xlsx' : format}`)
   }
 
+  async function importUuFullJson(file: File): Promise<UuFullJsonImportResult> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await api.post<UuFullJsonImportResult>('/sync/uu/import-full-json', body)
+    await Promise.all([loadLots(), loadSummary(), loadValuation()])
+    return data
+  }
+
   return {
     lots, summary, pnlRows, loading, loadingSummary, loadingPnl, error, dashError,
     valuation, priceConfig, refreshingPrices, loadingValuation,
-    loadLots, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, exportLots,
+    loadLots, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, exportLots, importUuFullJson,
     loadValuation, loadPriceConfig, refreshPrices
   }
 })

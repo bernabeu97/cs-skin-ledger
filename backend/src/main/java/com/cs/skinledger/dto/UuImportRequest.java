@@ -35,6 +35,7 @@ public record UuImportRequest(
             String itemName,
             String itemNameZh,
             String wear,
+            BigDecimal floatValue,
             @Positive BigDecimal quantity,
             BigDecimal buyPrice,
             String buyTime,
@@ -45,5 +46,14 @@ public record UuImportRequest(
             String sellPlatform,
             String sourceRef,
             String note) {
+
+        /** 兼容既有调用方；旧格式没有卖出批次的具体磨损值。 */
+        public SaleImport(Long itemId, String itemName, String itemNameZh, String wear,
+                          BigDecimal quantity, BigDecimal buyPrice, String buyTime, String buyPlatform,
+                          BigDecimal sellPrice, BigDecimal fee, String sellTime, String sellPlatform,
+                          String sourceRef, String note) {
+            this(itemId, itemName, itemNameZh, wear, null, quantity, buyPrice, buyTime, buyPlatform,
+                    sellPrice, fee, sellTime, sellPlatform, sourceRef, note);
+        }
     }
 }
