@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import ColumnPicker from '../components/ColumnPicker.vue'
 import LotForm from '../components/LotForm.vue'
 import LotTable from '../components/LotTable.vue'
 import SellForm from '../components/SellForm.vue'
@@ -11,9 +12,22 @@ import { useLotsStore } from '../stores/lots'
 import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
 import { downloadBlob, formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
+import { useColumnVisibility } from '../utils/columnVisibility'
 import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert } from '../types'
 
 type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
+
+const LOT_COLUMNS = [
+  { key: 'item', label: '饰品' }, { key: 'exterior', label: '磨损' }, { key: 'floatValue', label: '磨损值' },
+  { key: 'quantity', label: '数量' }, { key: 'buyPrice', label: '买入价' }, { key: 'buyTime', label: '买入时间' },
+  { key: 'buyPlatform', label: '买入平台' }, { key: 'sellPrice', label: '出售价' }, { key: 'actualIncome', label: '实际收入' },
+  { key: 'fee', label: '手续费' }, { key: 'sellTime', label: '出售时间' }, { key: 'sellPlatform', label: '出售平台' },
+  { key: 'profit', label: '盈亏' }, { key: 'status', label: '状态' }, { key: 'note', label: '备注' }
+]
+const ALERT_COLUMNS = [
+  { key: 'item', label: '饰品' }, { key: 'platform', label: '平台' }, { key: 'condition', label: '条件' },
+  { key: 'threshold', label: '阈值' }, { key: 'status', label: '状态' }
+]
 
 const store = useLotsStore()
 const ui = useUiStore()
@@ -45,6 +59,8 @@ const alertBusy = ref(false)
 const deleteAlertTarget = ref<PriceAlert | null>(null)
 const uuFileEl = ref<HTMLInputElement | null>(null)
 const importingUu = ref(false)
+const { visibleColumns: lotVisibleColumns } = useColumnVisibility('columns:lots', LOT_COLUMNS)
+const { visibleColumns: alertVisibleColumns, isColumnVisible: isAlertColumnVisible } = useColumnVisibility('columns:alerts', ALERT_COLUMNS)
 
 const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
@@ -356,6 +372,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 
       <div class="spacer"></div>
 
+      <ColumnPicker v-model="lotVisibleColumns" :columns="LOT_COLUMNS" />
       <button type="button" class="btn btn-ghost btn-sm" title="下载导入模板" @click="downloadTemplate">模板</button>
       <input ref="uuFileEl" class="visually-hidden" type="file" accept="application/json,.json" @change="onUuJsonSelected" />
       <button
@@ -388,6 +405,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       :loading="store.loading"
       :sort-key="sortKey"
       :sort-dir="sortDir"
+      :visible-columns="lotVisibleColumns"
       :highlight-id="highlightId"
       @edit="openEdit"
       @delete="requestDelete"
@@ -417,7 +435,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
     </div>
 
     <div v-show="tab === 'alerts'">
-      <h1>价格提醒</h1>
+      <div class="section-title-row">
+        <h1>价格提醒</h1>
+        <ColumnPicker v-model="alertVisibleColumns" :columns="ALERT_COLUMNS" />
+      </div>
       <div class="alert-bar">
         <ItemSelect v-model="alertItem" placeholder="搜索要提醒的饰品（支持中文）" />
         <select v-model="alertPlatform" class="input" style="width:auto">
@@ -450,19 +471,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         <table class="data">
           <thead>
             <tr>
-              <th>饰品</th><th>平台</th><th>条件</th><th class="num-head">阈值</th><th>状态</th><th></th>
+              <th v-if="isAlertColumnVisible('item')">饰品</th>
+              <th v-if="isAlertColumnVisible('platform')">平台</th>
+              <th v-if="isAlertColumnVisible('condition')">条件</th>
+              <th v-if="isAlertColumnVisible('threshold')" class="num-head">阈值</th>
+              <th v-if="isAlertColumnVisible('status')">状态</th><th></th>
             </tr>
           </thead>
           <tbody v-if="alertsStore.loading">
-            <tr><td colspan="6"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
+            <tr><td :colspan="alertVisibleColumns.length + 1"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
           </tbody>
           <tbody v-else>
             <tr v-for="a in alertsStore.alerts" :key="a.id">
-              <td>{{ a.itemNameZh ?? a.itemName }}</td>
-              <td><span class="badge badge-muted mono">{{ a.platform }}</span></td>
-              <td>{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
-              <td class="num">{{ formatMoney(a.threshold) }}</td>
-              <td>
+              <td v-if="isAlertColumnVisible('item')">{{ a.itemNameZh ?? a.itemName }}</td>
+              <td v-if="isAlertColumnVisible('platform')"><span class="badge badge-muted mono">{{ a.platform }}</span></td>
+              <td v-if="isAlertColumnVisible('condition')">{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
+              <td v-if="isAlertColumnVisible('threshold')" class="num">{{ formatMoney(a.threshold) }}</td>
+              <td v-if="isAlertColumnVisible('status')">
                 <span v-if="a.triggeredAt" class="badge badge-accent">已触发 {{ formatDateTime(a.triggeredAt) }}</span>
                 <span v-else class="badge badge-muted">监控中</span>
               </td>
@@ -500,6 +525,8 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .stat-label { font-size: 11px; color: var(--text-muted); }
 .stat-value { font-size: 16px; font-weight: 650; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.section-title-row h1 { margin: 0; }
 .toolbar .search { width: 200px; }
 .toolbar .filter { width: 112px; }
 .toolbar .date { width: 140px; }

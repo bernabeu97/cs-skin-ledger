@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useCostsStore } from '../stores/costs'
+import ColumnPicker from '../components/ColumnPicker.vue'
 import ItemSelect from '../components/ItemSelect.vue'
 import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
+import { useColumnVisibility } from '../utils/columnVisibility'
 import { COST_CATEGORY_LABELS } from '../types'
 import type { CostCategory, CostDirection, CostRequest, Item } from '../types'
 
 const store = useCostsStore()
+
+const COST_COLUMNS = [
+  { key: 'category', label: '分类' }, { key: 'direction', label: '方向' }, { key: 'amount', label: '金额' },
+  { key: 'occurredAt', label: '时间' }, { key: 'platform', label: '平台' }, { key: 'item', label: '关联饰品' },
+  { key: 'note', label: '备注' }
+]
 
 const filterCategory = ref('')
 const filterDirection = ref('')
@@ -14,6 +22,7 @@ const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const busy = ref(false)
 const formError = ref('')
+const { visibleColumns: costVisibleColumns, isColumnVisible: isCostColumnVisible } = useColumnVisibility('columns:other-costs', COST_COLUMNS)
 
 const form = ref<{
   category: CostCategory
@@ -113,6 +122,7 @@ onMounted(loadAll)
     <div class="page-head">
       <h1>其他收支</h1>
       <div class="head-actions">
+        <ColumnPicker v-model="costVisibleColumns" :columns="COST_COLUMNS" />
         <button type="button" class="btn" @click="store.exportCosts('csv')">导出 CSV</button>
         <button type="button" class="btn" @click="store.exportCosts('xlsx')">导出 Excel</button>
         <button type="button" class="btn btn-primary" @click="openCreate">新增记录</button>
@@ -204,22 +214,27 @@ onMounted(loadAll)
       <table class="data">
         <thead>
           <tr>
-            <th>分类</th><th>方向</th><th class="num-head">金额</th><th class="num-head">时间</th>
-            <th>平台</th><th>关联饰品</th><th>备注</th><th></th>
+            <th v-if="isCostColumnVisible('category')">分类</th>
+            <th v-if="isCostColumnVisible('direction')">方向</th>
+            <th v-if="isCostColumnVisible('amount')" class="num-head">金额</th>
+            <th v-if="isCostColumnVisible('occurredAt')" class="num-head">时间</th>
+            <th v-if="isCostColumnVisible('platform')">平台</th>
+            <th v-if="isCostColumnVisible('item')">关联饰品</th>
+            <th v-if="isCostColumnVisible('note')">备注</th><th></th>
           </tr>
         </thead>
         <tbody v-if="store.loading">
-          <tr><td colspan="8"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
+          <tr><td :colspan="costVisibleColumns.length + 1"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
         </tbody>
         <tbody v-else>
           <tr v-for="c in store.costs" :key="c.id">
-            <td><span class="badge" :class="c.direction === 'income' ? 'badge-success' : 'badge-danger'">{{ COST_CATEGORY_LABELS[c.category] }}</span></td>
-            <td>{{ c.direction === 'income' ? '收入' : '支出' }}</td>
-            <td class="num" :class="c.direction === 'income' ? 'up' : 'down'">{{ formatSignedMoney(c.amount) }}</td>
-            <td class="num mono">{{ formatDateTime(c.occurredAt) }}</td>
-            <td><span class="badge badge-muted mono">{{ c.platform ?? '-' }}</span></td>
-            <td>{{ c.itemNameZh ?? c.itemName ?? '-' }}</td>
-            <td class="note-cell">{{ c.note ?? '-' }}</td>
+            <td v-if="isCostColumnVisible('category')"><span class="badge" :class="c.direction === 'income' ? 'badge-success' : 'badge-danger'">{{ COST_CATEGORY_LABELS[c.category] }}</span></td>
+            <td v-if="isCostColumnVisible('direction')">{{ c.direction === 'income' ? '收入' : '支出' }}</td>
+            <td v-if="isCostColumnVisible('amount')" class="num" :class="c.direction === 'income' ? 'up' : 'down'">{{ formatSignedMoney(c.amount) }}</td>
+            <td v-if="isCostColumnVisible('occurredAt')" class="num mono">{{ formatDateTime(c.occurredAt) }}</td>
+            <td v-if="isCostColumnVisible('platform')"><span class="badge badge-muted mono">{{ c.platform ?? '-' }}</span></td>
+            <td v-if="isCostColumnVisible('item')">{{ c.itemNameZh ?? c.itemName ?? '-' }}</td>
+            <td v-if="isCostColumnVisible('note')" class="note-cell">{{ c.note ?? '-' }}</td>
             <td class="row-actions">
               <button type="button" class="btn btn-ghost btn-sm" @click="openEdit(c)">编辑</button>
               <button type="button" class="btn btn-ghost btn-sm danger-text" @click="store.deleteCost(c.id)">删除</button>

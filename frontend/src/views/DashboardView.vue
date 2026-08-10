@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ColumnPicker from '../components/ColumnPicker.vue'
 import PnlChart from '../components/PnlChart.vue'
 import { useLotsStore } from '../stores/lots'
 import { useCostsStore } from '../stores/costs'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
+import { useColumnVisibility } from '../utils/columnVisibility'
 import type { HoldingValuation } from '../types'
 
 const store = useLotsStore()
@@ -17,11 +19,17 @@ const PERIODS = [
   { v: 'day', label: '日度' },
   { v: 'year', label: '年度' }
 ] as const
+const HOLDING_COLUMNS = [
+  { key: 'item', label: '饰品' }, { key: 'exterior', label: '磨损' }, { key: 'quantity', label: '数量' },
+  { key: 'buyPrice', label: '买入价' }, { key: 'uuPrice', label: 'UU 价' },
+  { key: 'steamPrice', label: 'Steam 价', defaultVisible: false }, { key: 'currentPrice', label: '当前价（UU）' },
+  { key: 'unrealizedPnl', label: '浮动盈亏' }, { key: 'buyTime', label: '买入时间' }, { key: 'buyPlatform', label: '买入平台' }
+]
 const period = ref<'month' | 'week' | 'day' | 'year'>('month')
 const refreshing = ref(false)
 const refreshingPrices = ref(false)
 const priceMessage = ref('')
-const showCompare = ref(false)
+const { visibleColumns: holdingVisibleColumns, isColumnVisible: isHoldingColumnVisible } = useColumnVisibility('columns:dashboard-holdings', HOLDING_COLUMNS)
 
 const periodLabel = computed(() => PERIODS.find(p => p.v === period.value)?.label ?? '月度')
 
@@ -202,49 +210,49 @@ onMounted(loadAll)
 
     <div class="section-head">
       <h2>当前持仓（待卖出）</h2>
-      <button type="button" class="chip" :class="{ active: showCompare }" @click="showCompare = !showCompare">
-        {{ showCompare ? '收起 Steam 对比' : '对比 Steam 价' }}
-      </button>
+      <ColumnPicker v-model="holdingVisibleColumns" :columns="HOLDING_COLUMNS" />
     </div>
     <div class="table-wrap">
       <table class="data">
         <thead>
           <tr>
-            <th>饰品</th><th>磨损</th><th class="num-head">数量</th><th class="num-head">买入价</th>
-            <th class="num-head">UU 价</th><th v-if="showCompare" class="num-head">Steam 价</th><th class="num-head">当前价(UU)</th>
-            <th class="num-head">浮动盈亏</th><th class="num-head">买入时间</th><th>买入平台</th><th></th>
+            <th v-if="isHoldingColumnVisible('item')">饰品</th>
+            <th v-if="isHoldingColumnVisible('exterior')">磨损</th>
+            <th v-if="isHoldingColumnVisible('quantity')" class="num-head">数量</th>
+            <th v-if="isHoldingColumnVisible('buyPrice')" class="num-head">买入价</th>
+            <th v-if="isHoldingColumnVisible('uuPrice')" class="num-head">UU 价</th>
+            <th v-if="isHoldingColumnVisible('steamPrice')" class="num-head">Steam 价</th>
+            <th v-if="isHoldingColumnVisible('currentPrice')" class="num-head">当前价(UU)</th>
+            <th v-if="isHoldingColumnVisible('unrealizedPnl')" class="num-head">浮动盈亏</th>
+            <th v-if="isHoldingColumnVisible('buyTime')" class="num-head">买入时间</th>
+            <th v-if="isHoldingColumnVisible('buyPlatform')">买入平台</th><th></th>
           </tr>
         </thead>
         <tbody v-if="store.loading">
           <tr v-for="i in 3" :key="i">
-            <td colspan="11"><div class="skeleton" style="height:14px;width:100%"></div></td>
+            <td :colspan="holdingVisibleColumns.length + 1"><div class="skeleton" style="height:14px;width:100%"></div></td>
           </tr>
         </tbody>
         <tbody v-else>
           <tr v-for="lot in holdingLots" :key="lot.id">
-            <td>{{ lot.itemNameZh ?? lot.itemName }}</td>
-            <td>{{ lot.exterior ?? '-' }}</td>
-            <td class="num">{{ formatQty(lot.quantity) }}</td>
-            <td class="num">{{ formatMoney(lot.buyPrice) }}</td>
-            <template v-if="valuationMap.get(lot.id)">
-              <td class="num">{{ valuationMap.get(lot.id)?.latestPrices.uu != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.uu) : '-' }}</td>
-              <td v-if="showCompare" class="num">{{ valuationMap.get(lot.id)?.latestPrices.steam != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.steam) : '-' }}</td>
-              <td class="num">
+            <td v-if="isHoldingColumnVisible('item')">{{ lot.itemNameZh ?? lot.itemName }}</td>
+            <td v-if="isHoldingColumnVisible('exterior')">{{ lot.exterior ?? '-' }}</td>
+            <td v-if="isHoldingColumnVisible('quantity')" class="num">{{ formatQty(lot.quantity) }}</td>
+            <td v-if="isHoldingColumnVisible('buyPrice')" class="num">{{ formatMoney(lot.buyPrice) }}</td>
+            <td v-if="isHoldingColumnVisible('uuPrice')" class="num">{{ valuationMap.get(lot.id)?.latestPrices.uu != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.uu) : '-' }}</td>
+            <td v-if="isHoldingColumnVisible('steamPrice')" class="num">{{ valuationMap.get(lot.id)?.latestPrices.steam != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.steam) : '-' }}</td>
+            <td v-if="isHoldingColumnVisible('currentPrice')" class="num">
                 <template v-if="valuationMap.get(lot.id)?.currentPrice != null">
                   {{ formatMoney(valuationMap.get(lot.id)!.currentPrice!) }}
                   <span class="badge badge-muted mono">{{ valuationMap.get(lot.id)?.pricePlatform }}</span>
                 </template>
                 <span v-else class="text-muted">-</span>
-              </td>
-              <td class="num" :class="(valuationMap.get(lot.id)?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'">
-                {{ valuationMap.get(lot.id)?.unrealizedPnl != null ? formatSignedMoney(valuationMap.get(lot.id)!.unrealizedPnl!) : '-' }}
-              </td>
-            </template>
-            <template v-else>
-              <td class="num text-muted" colspan="4">暂无行情</td>
-            </template>
-            <td class="num mono">{{ formatDateTime(lot.buyTime) }}</td>
-            <td><span class="badge badge-muted mono">{{ lot.buyPlatform }}</span></td>
+            </td>
+            <td v-if="isHoldingColumnVisible('unrealizedPnl')" class="num" :class="(valuationMap.get(lot.id)?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'">
+              {{ valuationMap.get(lot.id)?.unrealizedPnl != null ? formatSignedMoney(valuationMap.get(lot.id)!.unrealizedPnl!) : '-' }}
+            </td>
+            <td v-if="isHoldingColumnVisible('buyTime')" class="num mono">{{ formatDateTime(lot.buyTime) }}</td>
+            <td v-if="isHoldingColumnVisible('buyPlatform')"><span class="badge badge-muted mono">{{ lot.buyPlatform }}</span></td>
             <td class="row-actions">
               <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/trades?lotId=' + lot.id)">去补填卖出</button>
             </td>

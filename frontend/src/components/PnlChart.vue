@@ -20,7 +20,7 @@ function render() {
     observer = new ResizeObserver(() => chart?.resize())
     observer.observe(chartEl)
   }
-  chart.setOption({
+  chart?.setOption({
     tooltip: {
       trigger: 'axis',
       valueFormatter: (value: unknown) => formatMoney(Number(value))
