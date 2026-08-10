@@ -1,7 +1,9 @@
 package com.cs.skinledger.config;
 
 import com.cs.skinledger.dto.UuFullJsonImportResult;
+import com.cs.skinledger.dto.PriceRefreshResult;
 import com.cs.skinledger.service.MaintenanceUuImportService;
+import com.cs.skinledger.service.PriceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
@@ -9,9 +11,14 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * 仅在服务器命令行显式传入维护参数时运行；没有 HTTP 管理入口。
@@ -24,6 +31,7 @@ public class MaintenanceUuImportRunner implements ApplicationRunner {
 
     private final Environment environment;
     private final MaintenanceUuImportService maintenanceUuImportService;
+    private final PriceService priceService;
     private final ObjectMapper objectMapper;
     private final ConfigurableApplicationContext context;
 
@@ -38,6 +46,18 @@ public class MaintenanceUuImportRunner implements ApplicationRunner {
 
         UuFullJsonImportResult result = maintenanceUuImportService.replaceUserData(username, Path.of(file));
         System.out.println("MAINTENANCE_UU_IMPORT_RESULT=" + objectMapper.writeValueAsString(result));
+        if (environment.getProperty("app.maintenance.refresh-prices", Boolean.class, false)) {
+            SecurityContext security = SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                    username, "maintenance", List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+            SecurityContextHolder.setContext(security);
+            try {
+                PriceRefreshResult prices = priceService.refresh(List.of("uu"));
+                System.out.println("MAINTENANCE_PRICE_REFRESH_RESULT=" + objectMapper.writeValueAsString(prices));
+            } finally {
+                SecurityContextHolder.clearContext();
+            }
+        }
         context.close();
     }
 }
