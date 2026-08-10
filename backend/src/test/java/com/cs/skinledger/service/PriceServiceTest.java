@@ -62,12 +62,16 @@ class PriceServiceTest {
         user.setUsername("local");
         userRepository.save(user);
         item = new Item();
-        item.setMarketHashName("AK-47 | Test Camo (Field-Tested)");
+        item.setMarketHashName("AK-47 | Test Camo");
         item.setSource("manual");
         item = itemRepository.save(item);
     }
 
     private Lot holdingLot(BigDecimal qty, BigDecimal buyPrice) {
+        return holdingLot(qty, buyPrice, null);
+    }
+
+    private Lot holdingLot(BigDecimal qty, BigDecimal buyPrice, String exterior) {
         Lot lot = new Lot();
         lot.setItem(item);
         lot.setUser(userRepository.findByUsername("local").orElseThrow());
@@ -75,12 +79,18 @@ class PriceServiceTest {
         lot.setBuyPrice(buyPrice);
         lot.setBuyTime(LocalDateTime.of(2026, 1, 1, 10, 0));
         lot.setBuyPlatform("uu");
+        lot.setExterior(exterior);
         return lotRepository.save(lot);
     }
 
     private void snapshot(String platform, String price) {
+        snapshot(platform, price, null);
+    }
+
+    private void snapshot(String platform, String price, String exterior) {
         PriceSnapshot ps = new PriceSnapshot();
         ps.setItem(item);
+        ps.setExterior(exterior);
         ps.setPlatform(platform);
         ps.setPrice(new BigDecimal(price));
         ps.setCurrency("CNY");
@@ -128,5 +138,22 @@ class PriceServiceTest {
         assertNull(v.rows().get(0).currentPrice());
         assertNull(v.rows().get(0).unrealizedPnl());
         assertEquals(BigDecimal.ZERO, v.marketValue());
+    }
+
+    @Test
+    void valuationKeepsDifferentExteriorPricesSeparate() {
+        holdingLot(BigDecimal.ONE, new BigDecimal("100"), "久经沙场");
+        holdingLot(BigDecimal.ONE, new BigDecimal("200"), "崭新出厂");
+        snapshot("uu", "110", "久经沙场");
+        snapshot("uu", "230", "崭新出厂");
+
+        PortfolioValuation v = priceService.valuation();
+
+        assertEquals(0, new BigDecimal("340").compareTo(v.marketValue()));
+        assertEquals(0, new BigDecimal("40").compareTo(v.unrealizedPnl()));
+        assertEquals(0, new BigDecimal("110").compareTo(v.rows().stream()
+                .filter(row -> "久经沙场".equals(row.exterior())).findFirst().orElseThrow().currentPrice()));
+        assertEquals(0, new BigDecimal("230").compareTo(v.rows().stream()
+                .filter(row -> "崭新出厂".equals(row.exterior())).findFirst().orElseThrow().currentPrice()));
     }
 }

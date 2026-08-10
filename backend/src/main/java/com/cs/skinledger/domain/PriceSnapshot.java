@@ -34,6 +34,10 @@ public class PriceSnapshot {
     @JoinColumn(name = "item_id", nullable = false)
     private Item item;
 
+    /** 磨损等级；同一基础饰品不同磨损必须使用不同快照。 */
+    @Column(length = 16)
+    private String exterior;
+
     /** 平台：steam / uu / buff */
     @Column(nullable = false, length = 16)
     private String platform;

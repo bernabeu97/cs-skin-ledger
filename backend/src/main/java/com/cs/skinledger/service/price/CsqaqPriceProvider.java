@@ -126,6 +126,6 @@ public class CsqaqPriceProvider implements PriceProvider {
         }
         Integer volume = volumeNode == null || volumeNode.isNull() || volumeNode.isMissingNode()
                 ? null : volumeNode.asInt();
-        quotes.add(new PriceQuote(t.itemId(), t.fullMarketHashName(), platform, price, null, volume, "CNY", now));
+        quotes.add(new PriceQuote(t.itemId(), t.fullMarketHashName(), t.exterior(), platform, price, null, volume, "CNY", now));
     }
 }

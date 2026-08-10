@@ -100,7 +100,7 @@ public class YoupinPriceProvider implements PriceProvider {
                     BigDecimal price = first.path("Price").decimalValue();
                     if (price.signum() > 0) {
                         Integer volume = first.hasNonNull("CommodityNum") ? first.path("CommodityNum").asInt() : null;
-                        quotes.add(new PriceQuote(t.itemId(), t.fullMarketHashName(), "uu", price, null, volume, "CNY", now));
+                        quotes.add(new PriceQuote(t.itemId(), t.fullMarketHashName(), t.exterior(), "uu", price, null, volume, "CNY", now));
                     }
                 }
             } catch (Exception e) {

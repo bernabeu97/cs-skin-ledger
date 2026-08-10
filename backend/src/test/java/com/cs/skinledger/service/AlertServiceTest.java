@@ -56,7 +56,7 @@ class AlertServiceTest {
     }
 
     private PriceQuote quote(String price) {
-        return new PriceQuote(item.getId(), "AK-47 | Alert Test (Field-Tested)", "uu",
+        return new PriceQuote(item.getId(), "AK-47 | Alert Test (Field-Tested)", "久经沙场", "uu",
                 new BigDecimal(price), null, null, "CNY", LocalDateTime.now());
     }
 

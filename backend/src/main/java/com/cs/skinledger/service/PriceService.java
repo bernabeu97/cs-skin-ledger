@@ -107,8 +107,8 @@ public class PriceService {
             return new PortfolioValuation(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, List.of());
         }
         List<Long> itemIds = lots.stream().map(l -> l.getItem().getId()).distinct().toList();
-        Map<Long, Map<String, PriceSnapshot>> latest = snapshotRepository.findLatestByItemIds(itemIds).stream()
-                .collect(Collectors.groupingBy(ps -> ps.getItem().getId(),
+        Map<String, Map<String, PriceSnapshot>> latest = snapshotRepository.findLatestByItemIds(itemIds).stream()
+                .collect(Collectors.groupingBy(ps -> priceKey(ps.getItem().getId(), ps.getExterior()),
                         Collectors.toMap(PriceSnapshot::getPlatform, Function.identity(), (a, b) -> a)));
 
         BigDecimal holdingCost = BigDecimal.ZERO;
@@ -120,7 +120,7 @@ public class PriceService {
             BigDecimal qty = lot.getQuantity();
             BigDecimal cost = qty.multiply(lot.getBuyPrice());
             holdingCost = holdingCost.add(cost);
-            Map<String, PriceSnapshot> byPlatform = latest.get(lot.getItem().getId());
+            Map<String, PriceSnapshot> byPlatform = latest.get(priceKey(lot.getItem().getId(), lot.getExterior()));
             PriceSnapshot used = pickSnapshot(byPlatform);
             if (used == null) {
                 rows.add(HoldingValuation.withoutPrice(lot.getId(), lot.getItem().getId(),
@@ -216,6 +216,7 @@ public class PriceService {
         List<PriceSnapshot> snapshots = quotes.stream().map(q -> {
             PriceSnapshot ps = new PriceSnapshot();
             ps.setItem(itemRepository.getReferenceById(q.itemId()));
+            ps.setExterior(q.exterior());
             ps.setPlatform(q.platform());
             ps.setPrice(q.price());
             ps.setBuyPrice(q.buyPrice());
@@ -234,5 +235,9 @@ public class PriceService {
             return List.of("uu", "steam", "buff");
         }
         return java.util.Arrays.stream(s.split(",")).map(String::trim).filter(x -> !x.isBlank()).toList();
+    }
+
+    private String priceKey(Long itemId, String exterior) {
+        return itemId + "|" + (exterior == null ? "" : exterior.trim());
     }
 }

@@ -68,7 +68,7 @@ public class SteamPriceProvider implements PriceProvider {
                 BigDecimal price = parseLowestPrice(node.path("lowest_price").asText(null));
                 Integer volume = node.hasNonNull("volume") ? node.path("volume").asInt() : null;
                 if (price != null && price.signum() > 0) {
-                    quotes.add(new PriceQuote(t.itemId(), full, "steam", price, null, volume, "CNY", now));
+                    quotes.add(new PriceQuote(t.itemId(), full, t.exterior(), "steam", price, null, volume, "CNY", now));
                 }
             }
             Thread.sleep(Math.max(200, props.getSteam().getDelayMs()));

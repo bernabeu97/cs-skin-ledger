@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record PriceQuote(
         Long itemId,
         String marketHashName,
+        String exterior,
         String platform,
         BigDecimal price,
         BigDecimal buyPrice,
