@@ -56,7 +56,7 @@ class UuFullJsonImportServiceTest {
         User user = new User();
         user.setUsername("local");
         users.save(user);
-        addItem("AK-47 | Test (Factory New)", "AK-47 | 测试 (崭新出厂)");
+        addItem("AK-47 | Test", "AK-47 | 测试");
         addItem("Glove Case", "手套武器箱");
         addItem("Unmatched Case", "无匹配武器箱");
     }

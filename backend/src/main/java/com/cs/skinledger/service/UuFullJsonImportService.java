@@ -162,9 +162,9 @@ public class UuFullJsonImportService {
     private Parsed parseRow(JsonNode node, int index, String direction, Map<String, Integer> orderOrdinals) {
         JsonNode raw = node.path("raw");
         JsonNode detail = raw.path("productDetail");
-        String itemName = firstText(text(node, "marketHashName"), text(detail, "commodityHashName"));
-        String itemNameZh = firstText(text(node, "commodityName"), text(detail, "commodityName"));
-        if (itemName.isBlank() && itemNameZh.isBlank()) {
+        String fullItemName = firstText(text(node, "marketHashName"), text(detail, "commodityHashName"));
+        String fullItemNameZh = firstText(text(node, "commodityName"), text(detail, "commodityName"));
+        if (fullItemName.isBlank() && fullItemNameZh.isBlank()) {
             return new Parsed(null, false);
         }
 
@@ -195,7 +195,9 @@ public class UuFullJsonImportService {
         String identity = detailNo.isBlank() ? orderNo + ":" + ordinal : detailNo;
         String sourceRef = "uu:full:" + direction + ":" + identity;
 
-        String exterior = exterior(itemName, detail);
+        String exterior = exterior(fullItemName, detail);
+        String itemName = stripExterior(fullItemName);
+        String itemNameZh = stripExteriorZh(fullItemNameZh);
         BigDecimal floatValue = firstDecimal(decimal(node.get("wear")), decimal(detail.get("abrade")));
         BigDecimal serviceFee = decimal(raw.get("serviceFee"));
         BigDecimal commodityNum = decimal(raw.get("commodityNum"));
@@ -207,7 +209,8 @@ public class UuFullJsonImportService {
             }
         }
 
-        String matchKey = !itemName.isBlank() ? itemName.trim() : "zh:" + itemNameZh.trim();
+        // 配对必须包含磨损等级；字典匹配则使用去掉磨损后缀的基础饰品名。
+        String matchKey = !fullItemName.isBlank() ? fullItemName.trim() : "zh:" + fullItemNameZh.trim();
         ParsedRow row = new ParsedRow(index, direction, orderNo, sourceRef, matchKey, itemName,
                 itemNameZh, exterior, floatValue, price, fee, eventTime);
         return new Parsed(row, corrected);
@@ -244,6 +247,28 @@ public class UuFullJsonImportService {
             }
         }
         return null;
+    }
+
+    private String stripExterior(String itemName) {
+        String value = itemName == null ? "" : itemName.trim();
+        for (String exterior : EXTERIORS.keySet()) {
+            String suffix = " (" + exterior + ")";
+            if (value.endsWith(suffix)) {
+                return value.substring(0, value.length() - suffix.length()).trim();
+            }
+        }
+        return value;
+    }
+
+    private String stripExteriorZh(String itemNameZh) {
+        String value = itemNameZh == null ? "" : itemNameZh.trim();
+        for (String exterior : EXTERIORS.values()) {
+            String suffix = " (" + exterior + ")";
+            if (value.endsWith(suffix)) {
+                return value.substring(0, value.length() - suffix.length()).trim();
+            }
+        }
+        return value;
     }
 
     private String format(LocalDateTime time) {
