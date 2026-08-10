@@ -4,8 +4,7 @@ import type { Item } from '../types'
 export const api = axios.create({ baseURL: '/api' })
 
 export async function ensureCsrf(): Promise<void> {
-  const { data } = await api.get<{ token: string }>('/auth/csrf')
-  api.defaults.headers.common['X-XSRF-TOKEN'] = data.token
+  await api.get('/auth/csrf')
 }
 
 export interface TradeQuery {
