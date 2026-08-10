@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as echarts from 'echarts'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PnlRow } from '../types'
 import { formatMoney, formatSignedMoney } from '../utils/format'
 
@@ -8,16 +8,24 @@ const props = defineProps<{ rows: PnlRow[]; loading: boolean; periodLabel: strin
 const el = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
+let chartEl: HTMLDivElement | null = null
 
 function render() {
   if (!el.value) return
-  if (!chart) chart = echarts.init(el.value)
+  if (chartEl !== el.value) {
+    observer?.disconnect()
+    chart?.dispose()
+    chartEl = el.value
+    chart = echarts.init(chartEl)
+    observer = new ResizeObserver(() => chart?.resize())
+    observer.observe(chartEl)
+  }
   chart.setOption({
     tooltip: {
       trigger: 'axis',
       valueFormatter: (value: unknown) => formatMoney(Number(value))
     },
-    grid: { left: 48, right: 20, top: 28, bottom: 32 },
+    grid: { left: 12, right: 20, top: 28, bottom: 8, containLabel: true },
     xAxis: {
       type: 'category',
       data: props.rows.map(r => r.key),
@@ -47,18 +55,18 @@ function render() {
   }, true)
 }
 
-onMounted(() => {
+async function syncChart() {
+  await nextTick()
   render()
-  if (el.value) {
-    observer = new ResizeObserver(() => chart?.resize())
-    observer.observe(el.value)
-  }
-})
-watch(() => props.rows, render, { deep: true, flush: 'post' })
+}
+
+onMounted(syncChart)
+watch([() => props.loading, () => props.rows], syncChart, { deep: true, flush: 'post' })
 onBeforeUnmount(() => {
   observer?.disconnect()
   chart?.dispose()
   chart = null
+  chartEl = null
 })
 </script>
 
