@@ -14,10 +14,11 @@ public record PriceTarget(Long itemId, String marketHashName, String exterior) {
      * 例：AK-47 | Hydroponic + 久经沙场 -> AK-47 | Hydroponic (Field-Tested)
      */
     public String fullMarketHashName() {
+        String baseName = marketHashName == null ? "" : marketHashName.trim();
         String enWear = WearNames.toEnglish(exterior);
         if (enWear == null || enWear.isBlank()) {
-            return marketHashName;
+            return baseName;
         }
-        return marketHashName + " (" + enWear + ")";
+        return baseName + " (" + enWear + ")";
     }
 }
