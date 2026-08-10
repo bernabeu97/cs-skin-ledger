@@ -11,18 +11,21 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@WithMockUser(username = "local")
 class TradeItemWearControllerTest {
 
     @Autowired
@@ -48,6 +51,8 @@ class TradeItemWearControllerTest {
 
     @Autowired
     private com.cs.skinledger.repository.LotRepository lotRepository;
+    @Autowired
+    private com.cs.skinledger.repository.UserRepository userRepository;
 
     @BeforeEach
     void cleanDatabase() {
@@ -57,6 +62,10 @@ class TradeItemWearControllerTest {
         settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
+        userRepository.deleteAll();
+        com.cs.skinledger.domain.User user = new com.cs.skinledger.domain.User();
+        user.setUsername("local");
+        userRepository.save(user);
     }
 
     private Item saveItem(String name) {
@@ -82,7 +91,7 @@ class TradeItemWearControllerTest {
                 "exterior", "崭新出厂",
                 "floatValue", 0.1234);
 
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isOk())
@@ -103,7 +112,7 @@ class TradeItemWearControllerTest {
                 "tradedAt", "2026-01-05T10:00:00",
                 "floatValue", 1.5);
 
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isBadRequest());
@@ -112,7 +121,7 @@ class TradeItemWearControllerTest {
     @Test
     void searchTradesByChineseName() throws Exception {
         saveItem("AK-47 | Redline");
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "itemName", "AK-47 | Redline",

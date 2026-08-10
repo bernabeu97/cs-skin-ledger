@@ -10,7 +10,7 @@ import { errorMessage } from '../api/client'
 import { useLotsStore } from '../stores/lots'
 import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
-import { downloadBlob, formatMoney, formatSignedMoney } from '../utils/format'
+import { downloadBlob, formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert } from '../types'
 
 type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'

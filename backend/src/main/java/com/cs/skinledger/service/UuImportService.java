@@ -8,7 +8,6 @@ import com.cs.skinledger.dto.UuImportRequest;
 import com.cs.skinledger.dto.UuImportResult;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
-import com.cs.skinledger.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,12 +38,13 @@ public class UuImportService {
 
     private final LotRepository lotRepository;
     private final ItemRepository itemRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
 
     @Transactional
     public UuImportResult importData(UuImportRequest req) {
         List<String> errors = new ArrayList<>();
-        User user = localUser();
+        User user = currentUser.get();
+        Long userId = user.getId();
         int hReq = req.holdings() == null ? 0 : req.holdings().size();
         int hImported = 0;
         int hSkip = 0;
@@ -53,7 +53,7 @@ public class UuImportService {
             String sourceRef = h.sourceRef() == null || h.sourceRef().isBlank()
                     ? "imp:h:" + safe(h.itemName()) + ":" + safe(h.wear()) + ":" + qty.toPlainString() + ":" + safe(h.buyTime())
                     : h.sourceRef().trim();
-            if (lotRepository.existsBySourceRef(sourceRef)) {
+            if (lotRepository.existsByUserIdAndSourceRef(userId, sourceRef)) {
                 hSkip++;
                 continue;
             }
@@ -95,7 +95,7 @@ public class UuImportService {
             String sourceRef = s.sourceRef() == null || s.sourceRef().isBlank()
                     ? "imp:s:" + safe(s.itemName()) + ":" + safe(s.wear()) + ":" + safe(s.sellTime())
                     : s.sourceRef().trim();
-            if (lotRepository.existsBySourceRef(sourceRef)) {
+            if (lotRepository.existsByUserIdAndSourceRef(userId, sourceRef)) {
                 sSkip++;
                 continue;
             }
@@ -185,12 +185,4 @@ public class UuImportService {
         return s == null ? "" : s.trim();
     }
 
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseGet(() -> {
-                    User user = new User();
-                    user.setUsername("local");
-                    return userRepository.save(user);
-                });
-    }
 }

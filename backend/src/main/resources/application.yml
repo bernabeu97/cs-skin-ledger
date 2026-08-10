@@ -15,13 +15,20 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+
 server:
   port: 8080
+  servlet:
+    session:
+      timeout: 7d
+      cookie:
+        http-only: true
+        same-site: lax
 
-# ===== 行情模块（M2/M3）配置 =====
-# 主数据源 CSQAQ：免费注册 https://csqaq.com 后复制 ApiToken，
-# 并在个人中心把本机出口 IP 加入白名单；环境变量 CSQAQ_TOKEN 优先。
 app:
+  security:
+    # 生产环境必须通过 APP_ENCRYPTION_KEY 设置随机密钥。
+    encryption-key: ${APP_ENCRYPTION_KEY:local-development-only-change-me}
   price:
     csqaq:
       api-token: ${CSQAQ_TOKEN:}
@@ -35,9 +42,6 @@ app:
       enabled: false
       token-file: work/uu_token.txt
       timeout-seconds: 12
-    # 默认刷新平台：uu,steam,buff（来自 CSQAQ 时一次请求即可全部拿到）
     default-sources: uu,steam,buff
-    # 定时刷新间隔（分钟），0 表示关闭；建议配置 CSQAQ 后再开启，避免被限流
     refresh-interval-minutes: 0
-    # 启动后首次自动刷新延迟（秒）
     refresh-initial-delay-seconds: 300

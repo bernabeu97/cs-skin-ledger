@@ -2,13 +2,11 @@ package com.cs.skinledger.service;
 
 import com.cs.skinledger.domain.Alert;
 import com.cs.skinledger.domain.Item;
-import com.cs.skinledger.domain.User;
 import com.cs.skinledger.dto.AlertCreateRequest;
 import com.cs.skinledger.dto.AlertResponse;
 import com.cs.skinledger.dto.PriceQuote;
 import com.cs.skinledger.repository.AlertRepository;
 import com.cs.skinledger.repository.ItemRepository;
-import com.cs.skinledger.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,11 +27,11 @@ public class AlertService {
 
     private final AlertRepository alertRepository;
     private final ItemRepository itemRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
 
     @Transactional(readOnly = true)
     public List<AlertResponse> list() {
-        return alertRepository.findByUserId(localUserId()).stream().map(AlertResponse::from).toList();
+        return alertRepository.findByUserId(currentUser.id()).stream().map(AlertResponse::from).toList();
     }
 
     @Transactional
@@ -41,7 +39,7 @@ public class AlertService {
         Item item = itemRepository.findById(req.itemId())
                 .orElseThrow(() -> new IllegalArgumentException("饰品不存在: " + req.itemId()));
         Alert alert = new Alert();
-        alert.setUser(localUser());
+        alert.setUser(currentUser.get());
         alert.setItem(item);
         alert.setPlatform(req.platform());
         alert.setCondition(req.condition());
@@ -52,14 +50,14 @@ public class AlertService {
 
     @Transactional
     public void delete(Long id) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("提醒不存在: " + id));
+        Alert alert = ownedAlert(id);
         alertRepository.delete(alert);
     }
 
     /** 重置触发状态，允许再次提醒 */
     @Transactional
     public AlertResponse reset(Long id) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("提醒不存在: " + id));
+        Alert alert = ownedAlert(id);
         alert.setTriggeredAt(null);
         return AlertResponse.from(alertRepository.save(alert));
     }
@@ -75,7 +73,7 @@ public class AlertService {
             latest.putIfAbsent(q.itemId() + "|" + q.platform(), q);
         }
         List<AlertResponse> triggered = new ArrayList<>();
-        List<Alert> alerts = alertRepository.findByUserId(localUserId());
+        List<Alert> alerts = alertRepository.findByUserId(currentUser.id());
         LocalDateTime now = LocalDateTime.now();
         for (Alert alert : alerts) {
             if (!Boolean.TRUE.equals(alert.getEnabled()) || alert.getTriggeredAt() != null) {
@@ -95,12 +93,8 @@ public class AlertService {
         return triggered;
     }
 
-    private Long localUserId() {
-        return localUser().getId();
-    }
-
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseThrow(() -> new IllegalStateException("本地用户不存在，请先初始化数据库"));
+    private Alert ownedAlert(Long id) {
+        return alertRepository.findByIdAndUserId(id, currentUser.id())
+                .orElseThrow(() -> new IllegalArgumentException("提醒不存在: " + id));
     }
 }

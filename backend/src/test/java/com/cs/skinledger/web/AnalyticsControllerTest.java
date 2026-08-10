@@ -10,18 +10,21 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@WithMockUser(username = "local")
 class AnalyticsControllerTest {
 
     @Autowired
@@ -48,6 +51,8 @@ class AnalyticsControllerTest {
 
     @Autowired
     private com.cs.skinledger.repository.SettingRepository settingRepository;
+    @Autowired
+    private com.cs.skinledger.repository.UserRepository userRepository;
 
     @BeforeEach
     void cleanDatabase() {
@@ -57,6 +62,10 @@ class AnalyticsControllerTest {
         settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
+        userRepository.deleteAll();
+        com.cs.skinledger.domain.User user = new com.cs.skinledger.domain.User();
+        user.setUsername("local");
+        userRepository.save(user);
     }
 
     private String body(String item, String direction, String qty, String price) throws Exception {
@@ -72,13 +81,13 @@ class AnalyticsControllerTest {
 
     @Test
     void realizedPnlGroupedByItem() throws Exception {
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Stats Knife", "BUY", "1", "100")));
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Stats Knife", "BUY", "1", "100")));
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Stats Knife", "SELL", "1", "150")));
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Stats Knife", "SELL", "1", "150")));
 
         mockMvc.perform(get("/api/analytics/pnl").param("group_by", "item"))
@@ -90,9 +99,9 @@ class AnalyticsControllerTest {
 
     @Test
     void portfolioReturnsHoldingsWithRealizedPnl() throws Exception {
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Hold Knife", "BUY", "2", "100")));
-        mockMvc.perform(post("/api/trades").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/trades").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body("Hold Knife", "SELL", "1", "120")));
 
         mockMvc.perform(get("/api/analytics/portfolio"))

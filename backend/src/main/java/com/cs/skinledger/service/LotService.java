@@ -13,7 +13,6 @@ import com.cs.skinledger.dto.PnlGroupBy;
 import com.cs.skinledger.dto.PnlRow;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
-import com.cs.skinledger.repository.UserRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -33,17 +32,16 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class LotService {
 
-    private static final long LOCAL_USER_ID = 1L;
     private static final Set<String> SUPPORTED_PLATFORMS = Set.of("steam", "uu", "buff");
 
     private final LotRepository lotRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final ItemRepository itemRepository;
 
     @Transactional
     public LotResponse create(LotCreateRequest req) {
         validatePlatform(req.buyPlatform());
-        User user = localUser();
+        User user = currentUser.get();
         Item item = resolveItem(req);
         Lot lot = new Lot();
         lot.setUser(user);
@@ -55,7 +53,7 @@ public class LotService {
     @Transactional
     public LotResponse update(Long id, LotCreateRequest req) {
         validatePlatform(req.buyPlatform());
-        Lot lot = lotRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));
+        Lot lot = ownedLot(id);
         Item item = resolveItem(req);
         lot.setItem(item);
         applyBuyFields(lot, req);
@@ -77,7 +75,7 @@ public class LotService {
         if (req.sellPlatform() != null) {
             validatePlatform(req.sellPlatform());
         }
-        Lot lot = lotRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));
+        Lot lot = ownedLot(id);
         lot.setSellPrice(req.sellPrice());
         lot.setSellTime(req.sellTime());
         lot.setSellPlatform(req.sellPlatform());
@@ -89,14 +87,14 @@ public class LotService {
 
     @Transactional
     public void delete(Long id) {
-        Lot lot = lotRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));
+        Lot lot = ownedLot(id);
         lotRepository.delete(lot);
     }
 
     @Transactional(readOnly = true)
     public List<LotResponse> list(LotFilter filter) {
         Specification<Lot> spec = filter == null
-                ? (root, query, cb) -> cb.equal(root.get("user").get("id"), LOCAL_USER_ID)
+                ? (root, query, cb) -> cb.equal(root.get("user").get("id"), currentUser.id())
                 : buildSpec(filter);
         return lotRepository.findAll(spec, Sort.by("buyTime").descending()).stream()
                 .map(LotResponse::from)
@@ -105,7 +103,7 @@ public class LotService {
 
     @Transactional(readOnly = true)
     public LotSummary summary() {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(LOCAL_USER_ID);
+        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id());
         BigDecimal totalBuyCost = BigDecimal.ZERO;
         BigDecimal holdingCost = BigDecimal.ZERO;
         BigDecimal realized = BigDecimal.ZERO;
@@ -127,7 +125,7 @@ public class LotService {
 
     @Transactional(readOnly = true)
     public List<PnlRow> realizedPnl(PnlGroupBy groupBy) {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(LOCAL_USER_ID);
+        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id());
         Map<String, BigDecimal> sums = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (Lot lot : lots) {
@@ -167,7 +165,7 @@ public class LotService {
     private Specification<Lot> buildSpec(LotFilter f) {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.equal(root.get("user").get("id"), LOCAL_USER_ID));
+            ps.add(cb.equal(root.get("user").get("id"), currentUser.id()));
             if (f.q() != null && !f.q().isBlank()) {
                 String pattern = "%" + f.q() + "%";
                 ps.add(cb.or(
@@ -227,13 +225,9 @@ public class LotService {
                 });
     }
 
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseGet(() -> {
-                    User user = new User();
-                    user.setUsername("local");
-                    return userRepository.save(user);
-                });
+    private Lot ownedLot(Long id) {
+        return lotRepository.findByIdAndUserId(id, currentUser.id())
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));
     }
 
     private void validatePlatform(String platform) {

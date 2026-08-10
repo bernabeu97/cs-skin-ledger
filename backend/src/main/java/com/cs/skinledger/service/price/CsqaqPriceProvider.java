@@ -3,6 +3,7 @@ package com.cs.skinledger.service.price;
 import com.cs.skinledger.config.AppPriceProperties;
 import com.cs.skinledger.dto.PriceQuote;
 import com.cs.skinledger.dto.PriceTarget;
+import com.cs.skinledger.service.CsqaqTokenService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -32,12 +33,14 @@ public class CsqaqPriceProvider implements PriceProvider {
     private static final int BATCH_SIZE = 50;
 
     private final AppPriceProperties props;
+    private final CsqaqTokenService tokenService;
     private final HttpClient http;
     private final ObjectMapper mapper;
 
-    public CsqaqPriceProvider(AppPriceProperties props, ObjectMapper mapper) {
+    public CsqaqPriceProvider(AppPriceProperties props, ObjectMapper mapper, CsqaqTokenService tokenService) {
         this.props = props;
         this.mapper = mapper;
+        this.tokenService = tokenService;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(Math.max(5, props.getCsqaq().getTimeoutSeconds())))
                 .build();
@@ -50,16 +53,13 @@ public class CsqaqPriceProvider implements PriceProvider {
 
     @Override
     public boolean available() {
-        return props.getCsqaq() != null
-                && props.getCsqaq().getApiToken() != null
-                && !props.getCsqaq().getApiToken().isBlank();
+        return tokenService.currentToken().isPresent();
     }
 
     @Override
     public List<PriceQuote> fetch(List<PriceTarget> targets) throws Exception {
-        if (!available()) {
-            throw new IllegalStateException("CSQAQ ApiToken 未配置，请在 application.yml 或环境变量 CSQAQ_TOKEN 中配置");
-        }
+        String apiToken = tokenService.currentToken()
+                .orElseThrow(() -> new IllegalStateException("CSQAQ ApiToken 未绑定，请在设置中绑定"));
         List<PriceQuote> quotes = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
@@ -73,7 +73,7 @@ public class CsqaqPriceProvider implements PriceProvider {
                     .header("Content-Type", "application/json")
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
                     .header("Accept", "application/json, text/plain, */*")
-                    .header("ApiToken", props.getCsqaq().getApiToken())
+                    .header("ApiToken", apiToken)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             // CSQAQ 限流较严：单个批次失败重试 2 次，批次之间间隔 1.5s，失败不中断后续批次

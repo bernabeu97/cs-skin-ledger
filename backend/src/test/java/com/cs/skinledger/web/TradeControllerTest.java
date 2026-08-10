@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -24,6 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@WithMockUser(username = "local")
 class TradeControllerTest {
 
     @Autowired
@@ -58,6 +61,8 @@ class TradeControllerTest {
 
     @Autowired
     private com.cs.skinledger.repository.SettingRepository settingRepository;
+    @Autowired
+    private com.cs.skinledger.repository.UserRepository userRepository;
 
     @BeforeEach
     void cleanDatabase() {
@@ -67,6 +72,10 @@ class TradeControllerTest {
         settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
+        userRepository.deleteAll();
+        com.cs.skinledger.domain.User user = new com.cs.skinledger.domain.User();
+        user.setUsername("local");
+        userRepository.save(user);
     }
 
     private String body(String item, String platform, String direction, String qty, String price, String fee)
@@ -83,7 +92,7 @@ class TradeControllerTest {
 
     @Test
     void createTradePersistsAndComputesTotal() throws Exception {
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("AK-47 | Redline (Field-Tested)", "steam", "BUY", "2", "100", "10")))
                 .andExpect(status().isOk())
@@ -96,10 +105,10 @@ class TradeControllerTest {
 
     @Test
     void listFiltersByPlatform() throws Exception {
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body("Case 1", "steam", "BUY", "1", "50", "0")));
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body("Case 2", "uu", "BUY", "1", "50", "0")));
 
@@ -111,13 +120,13 @@ class TradeControllerTest {
 
     @Test
     void updateTradeChangesFields() throws Exception {
-        String created = mockMvc.perform(post("/api/trades")
+        String created = mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("Gloves", "steam", "BUY", "1", "100", "0")))
                 .andReturn().getResponse().getContentAsString();
         long id = objectMapper.readTree(created).get("id").asLong();
 
-        mockMvc.perform(put("/api/trades/" + id)
+        mockMvc.perform(put("/api/trades/" + id).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("Gloves", "steam", "BUY", "2", "90", "0")))
                 .andExpect(status().isOk())
@@ -126,19 +135,19 @@ class TradeControllerTest {
 
     @Test
     void deleteTradeThenGetReturns404() throws Exception {
-        String created = mockMvc.perform(post("/api/trades")
+        String created = mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("Sticker", "steam", "BUY", "1", "10", "0")))
                 .andReturn().getResponse().getContentAsString();
         long id = objectMapper.readTree(created).get("id").asLong();
 
-        mockMvc.perform(delete("/api/trades/" + id)).andExpect(status().isNoContent());
-        mockMvc.perform(delete("/api/trades/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/trades/" + id).with(csrf())).andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/trades/" + id).with(csrf())).andExpect(status().isNotFound());
     }
 
     @Test
     void invalidPlatformReturns400() throws Exception {
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("Knife", "csgobackpack", "BUY", "1", "100", "0")))
                 .andExpect(status().isBadRequest());
@@ -146,10 +155,10 @@ class TradeControllerTest {
 
     @Test
     void sellExceedingHoldingsReturns400() throws Exception {
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body("AK-47 | Redline (Field-Tested)", "steam", "BUY", "1", "100", "0")));
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("AK-47 | Redline (Field-Tested)", "steam", "SELL", "2", "150", "0")))
                 .andExpect(status().isBadRequest());
@@ -161,7 +170,8 @@ class TradeControllerTest {
                 + "Test Case,steam,BUY,1,50,0,,CNY,2026-01-05T10:00:00,,COMPLETED,\n";
         mockMvc.perform(multipart("/api/trades/import/csv")
                         .file(new MockMultipartFile("file", "trades.csv", "text/csv",
-                                csv.getBytes(StandardCharsets.UTF_8))))
+                                csv.getBytes(StandardCharsets.UTF_8)))
+                        .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.created").value(1))
                 .andExpect(jsonPath("$.failed").value(0));
@@ -171,7 +181,7 @@ class TradeControllerTest {
     void importJsonCreatesTrades() throws Exception {
         String json = "[{\"itemName\":\"JSON Knife\",\"platform\":\"steam\",\"direction\":\"BUY\","
                 + "\"quantity\":1,\"unitPrice\":80,\"fee\":0,\"tradedAt\":\"2026-01-05T10:00:00\"}]";
-        mockMvc.perform(post("/api/trades/import/json")
+        mockMvc.perform(post("/api/trades/import/json").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
@@ -181,7 +191,7 @@ class TradeControllerTest {
 
     @Test
     void exportCsvContainsHeaderAndRows() throws Exception {
-        mockMvc.perform(post("/api/trades")
+        mockMvc.perform(post("/api/trades").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body("Export Knife", "steam", "BUY", "1", "100", "0")));
 

@@ -14,7 +14,6 @@ import com.cs.skinledger.dto.PriceTarget;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
 import com.cs.skinledger.repository.PriceSnapshotRepository;
-import com.cs.skinledger.repository.UserRepository;
 import com.cs.skinledger.service.price.PriceProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +38,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PriceService {
 
-    private static final long LOCAL_USER_ID = 1L;
     /** 估值统一以 UU（悠悠有品）价格为准；无 UU 价的批次不估值，不回退 Steam/BUFF */
     private static final List<String> PRICE_PRIORITY = List.of("uu");
 
@@ -48,7 +46,7 @@ public class PriceService {
     private final PriceSnapshotRepository snapshotRepository;
     private final AlertService alertService;
     private final AppPriceProperties props;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final List<PriceProvider> providers;
 
     /** 手动/定时触发刷新；platforms 为空时使用配置默认值 */
@@ -102,7 +100,7 @@ public class PriceService {
     /** 持仓估值：每个持有批次按平台优先级取最新价，计算市值与浮动盈亏 */
     @Transactional(readOnly = true)
     public PortfolioValuation valuation() {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(localUserId()).stream()
+        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id()).stream()
                 .filter(l -> l.getStatus() == LotStatus.HOLDING)
                 .toList();
         if (lots.isEmpty()) {
@@ -168,12 +166,6 @@ public class PriceService {
         return new PriceConfigView(csqaq, steam, uu, messages);
     }
 
-    private Long localUserId() {
-        return userRepository.findByUsername("local")
-                .orElseThrow(() -> new IllegalStateException("本地用户不存在，请先初始化数据库"))
-                .getId();
-    }
-
     private PriceSnapshot pickSnapshot(Map<String, PriceSnapshot> byPlatform) {
         if (byPlatform == null || byPlatform.isEmpty()) {
             return null;
@@ -190,7 +182,7 @@ public class PriceService {
     /** 持有批次 -> 采集目标（按完整市场名去重） */
     private List<PriceTarget> buildTargets() {
         Map<String, PriceTarget> byName = new LinkedHashMap<>();
-        lotRepository.findByUserIdOrderByBuyTimeAsc(localUserId()).stream()
+        lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id()).stream()
                 .filter(l -> l.getStatus() == LotStatus.HOLDING)
                 .forEach(l -> {
                     Item item = l.getItem();

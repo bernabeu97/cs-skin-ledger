@@ -14,7 +14,6 @@ import com.cs.skinledger.dto.TradeFilter;
 import com.cs.skinledger.dto.TradeResponse;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.TradeRepository;
-import com.cs.skinledger.repository.UserRepository;
 import com.cs.skinledger.service.PnlEngine.Position;
 import com.cs.skinledger.service.PnlEngine.TradeInput;
 import com.cs.skinledger.web.TradeNotFoundException;
@@ -38,18 +37,17 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TradeService {
 
-    private static final long LOCAL_USER_ID = 1L;
     private static final Set<String> SUPPORTED_PLATFORMS = Set.of("steam", "uu", "buff");
 
     private final TradeRepository tradeRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final ItemRepository itemRepository;
 
     @Transactional
     public TradeResponse create(TradeCreateRequest req) {
         validate(req);
         validateSellHolding(req, null);
-        User user = localUser();
+        User user = currentUser.get();
         Item item = resolveItem(req);
         Trade trade = new Trade();
         applyFields(trade, req, item, user);
@@ -59,7 +57,7 @@ public class TradeService {
     @Transactional(readOnly = true)
     public List<TradeResponse> list(TradeFilter filter) {
         Specification<Trade> spec = filter == null
-                ? (root, query, cb) -> cb.equal(root.get("user").get("id"), LOCAL_USER_ID)
+                ? (root, query, cb) -> cb.equal(root.get("user").get("id"), currentUser.id())
                 : buildSpec(filter);
         return tradeRepository.findAll(spec, Sort.by("tradedAt").descending()).stream()
                 .map(TradeResponse::from)
@@ -68,7 +66,7 @@ public class TradeService {
 
     @Transactional
     public TradeResponse update(Long id, TradeCreateRequest req) {
-        Trade trade = tradeRepository.findById(id).orElseThrow(() -> new TradeNotFoundException(id));
+        Trade trade = ownedTrade(id);
         validate(req);
         validateSellHolding(req, trade.getId());
         Item item = resolveItem(req);
@@ -78,13 +76,13 @@ public class TradeService {
 
     @Transactional
     public void delete(Long id) {
-        Trade trade = tradeRepository.findById(id).orElseThrow(() -> new TradeNotFoundException(id));
+        Trade trade = ownedTrade(id);
         tradeRepository.delete(trade);
     }
 
     @Transactional(readOnly = true)
     public PortfolioView portfolio() {
-        List<Trade> trades = tradeRepository.findByUserIdOrderByTradedAtAsc(LOCAL_USER_ID);
+        List<Trade> trades = tradeRepository.findByUserIdOrderByTradedAtAsc(currentUser.id());
         Map<Long, Position> positions = new LinkedHashMap<>();
         Map<Long, Item> items = new LinkedHashMap<>();
         for (Trade t : trades) {
@@ -112,7 +110,7 @@ public class TradeService {
 
     @Transactional(readOnly = true)
     public List<PnlRow> realizedPnl(PnlGroupBy groupBy) {
-        List<Trade> trades = tradeRepository.findByUserIdOrderByTradedAtAsc(LOCAL_USER_ID);
+        List<Trade> trades = tradeRepository.findByUserIdOrderByTradedAtAsc(currentUser.id());
         Map<Long, Position> positions = new HashMap<>();
         Map<String, BigDecimal> sums = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
@@ -158,7 +156,7 @@ public class TradeService {
     private Specification<Trade> buildSpec(TradeFilter f) {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.equal(root.get("user").get("id"), LOCAL_USER_ID));
+            ps.add(cb.equal(root.get("user").get("id"), currentUser.id()));
             if (f.platform() != null && !f.platform().isBlank()) {
                 ps.add(cb.equal(root.get("platform"), f.platform()));
             }
@@ -198,7 +196,7 @@ public class TradeService {
         if (item == null) {
             throw new IllegalArgumentException("卖出数量超过当前持仓：该饰品尚无任何持仓");
         }
-        List<TradeInput> inputs = tradeRepository.findByUserIdOrderByTradedAtAsc(LOCAL_USER_ID).stream()
+        List<TradeInput> inputs = tradeRepository.findByUserIdOrderByTradedAtAsc(currentUser.id()).stream()
                 .filter(t -> t.getStatus() == TradeStatus.COMPLETED)
                 .filter(t -> t.getItem().getId().equals(item.getId()))
                 .filter(t -> excludeId == null || !t.getId().equals(excludeId))
@@ -255,12 +253,8 @@ public class TradeService {
                 });
     }
 
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseGet(() -> {
-                    User user = new User();
-                    user.setUsername("local");
-                    return userRepository.save(user);
-                });
+    private Trade ownedTrade(Long id) {
+        return tradeRepository.findByIdAndUserId(id, currentUser.id())
+                .orElseThrow(() -> new TradeNotFoundException(id));
     }
 }

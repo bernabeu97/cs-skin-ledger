@@ -24,7 +24,7 @@ $env:JAVA_HOME='D:\Java\jdk-21'
 & 'D:\Java\apache-maven\bin\mvn.cmd' -f backend\pom.xml spring-boot:run
 ```
 
-验证：`Invoke-RestMethod http://localhost:8080/api/analytics/portfolio` 返回 JSON。
+首次打开前端后注册账号；首个账号会接管升级前 `local` 用户的全部账本数据。未登录访问业务 API 会返回 401。
 
 ## 启动前端
 
@@ -41,6 +41,7 @@ npm.cmd run dev
 - 交易记录：新增/编辑/删除/筛选，CSV 导入，CSV/JSON/Excel 导出
 - 仪表盘：持仓总成本、已实现盈亏、持仓列表、月度盈亏图
 - 卖出校验：卖出数量不能超过当前持仓（含手续费成本）
+- 账号：注册、登录、退出；交易、批次、其他收支、提醒、费率与 Token 均按账号隔离
 
 ## 说明
 
@@ -66,11 +67,7 @@ npm.cmd run dev
 ### 首次配置 CSQAQ
 1. 注册 https://csqaq.com → 个人中心复制 ApiToken。
 2. 在个人中心绑定**本机出口 IP** 白名单。
-3. 设置环境变量后重启后端（或直接改 application.yml）：
-   ```powershell
-   $env:CSQAQ_TOKEN="你的Token"
-   # 重启后端
-   ```
+3. 登录项目 → 设置 → CSQAQ 行情 Token，粘贴并绑定。Token 使用 AES-GCM 加密入库，页面和接口只返回末 4 位掩码。
 
 ### 导入平台商品 ID 映射（UU/BUFF 模板 ID）
 数据来自 https://github.com/chinap/buff163-ids （work/cs2_marketplaceids.json，约 3.8 万条）：
@@ -80,7 +77,7 @@ Invoke-RestMethod -Uri 'http://localhost:8080/api/prices/import-market-ids?dir=w
 
 ### 使用
 - 仪表盘 → “刷新行情”：为所有持有批次抓取最新价并写入 price_snapshots。
-- 仪表盘新增卡片：当前市值、浮动盈亏；持仓表新增 UU 价 / Steam 价 / 当前价 / 浮动盈亏列（估值按 UU → Steam → BUFF 优先级取价）。
+- 仪表盘新增卡片：当前市值、浮动盈亏；持仓表新增 UU 价 / Steam 价 / 当前价 / 浮动盈亏列；当前市值与浮动盈亏统一只采用 UU 价。
 - 接口：
   - POST /api/prices/refresh?platforms=uu,steam,buff
   - GET  /api/prices/valuation   （持仓估值）
@@ -101,6 +98,7 @@ Invoke-RestMethod -Uri 'http://localhost:8080/api/prices/import-market-ids?dir=w
 # 1. 设置环境变量后启动（MYSQL_ROOT_PASSWORD 必填）
 $env:MYSQL_ROOT_PASSWORD="你的root密码"
 $env:DB_PASSWORD="ledger_pass"          # 生产请改
+$env:APP_ENCRYPTION_KEY="至少16位的随机密钥" # 必填，后续升级不可更换
 $env:CSQAQ_TOKEN="你的Token"            # 可选，配置后才有行情
 docker compose up -d --build
 
@@ -131,4 +129,5 @@ docker compose up -d --build
 ## 设置与平台费率
 - 导航「设置」（/settings）：配置 Steam/UU/BUFF 手续费率（默认 15% / 0.5% / 2.5%），保存后卖出表单按「出售价 × 费率」自动带出建议手续费（可手动修改）。
 - 接口：GET/PUT /api/settings/fees（存于 settings 表，key=fees）。
+- 同页可绑定/替换/解绑当前账号的 CSQAQ Token；密文存于 settings 表，不会向前端返回明文。
 - 仪表盘首卡为「总盈亏 = 已实现盈亏 + 其他收支净额」；价格提醒在账本页 Tab 中管理。

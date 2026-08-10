@@ -7,12 +7,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface OtherCostRepository extends JpaRepository<OtherCostEntry, Long>, JpaSpecificationExecutor<OtherCostEntry> {
 
     List<OtherCostEntry> findByUserIdOrderByOccurredAtDesc(Long userId);
 
-    boolean existsBySourceRef(String sourceRef);
+    Optional<OtherCostEntry> findByIdAndUserId(Long id, Long userId);
+
+    boolean existsByUserIdAndSourceRef(Long userId, String sourceRef);
 
     @Query("""
             select o.direction, coalesce(sum(o.amount), 0)

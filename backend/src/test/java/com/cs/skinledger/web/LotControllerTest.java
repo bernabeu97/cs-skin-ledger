@@ -10,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -17,12 +18,14 @@ import java.util.Map;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@WithMockUser(username = "local")
 class LotControllerTest {
 
     @Autowired
@@ -48,6 +51,8 @@ class LotControllerTest {
 
     @Autowired
     private com.cs.skinledger.repository.TradeRepository tradeRepository;
+    @Autowired
+    private com.cs.skinledger.repository.UserRepository userRepository;
 
     @BeforeEach
     void cleanDatabase() {
@@ -57,6 +62,10 @@ class LotControllerTest {
         settingRepository.deleteAll();
         alertRepository.deleteAll();
         itemRepository.deleteAll();
+        userRepository.deleteAll();
+        com.cs.skinledger.domain.User user = new com.cs.skinledger.domain.User();
+        user.setUsername("local");
+        userRepository.save(user);
     }
 
     private String buyBody(String item, String price, String time) throws Exception {
@@ -69,7 +78,7 @@ class LotControllerTest {
 
     @Test
     void createBuyThenUpdateSellMatchesExcel() throws Exception {
-        String created = mockMvc.perform(post("/api/lots")
+        String created = mockMvc.perform(post("/api/lots").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buyBody("Test Agent | Loudmouth", "668.88", "2026-03-25T19:11:01")))
                 .andExpect(status().isOk())
@@ -83,7 +92,7 @@ class LotControllerTest {
                 "sellTime", "2026-04-09T19:54:03",
                 "sellPlatform", "uu",
                 "fee", "5.58"));
-        mockMvc.perform(post("/api/lots/" + id + "/sell")
+        mockMvc.perform(post("/api/lots/" + id + "/sell").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(sellBody))
                 .andExpect(status().isOk())
@@ -94,7 +103,7 @@ class LotControllerTest {
 
     @Test
     void sellOnMissingLotReturnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/lots/9999/sell")
+        mockMvc.perform(post("/api/lots/9999/sell").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("sellPrice", "100"))))
                 .andExpect(status().isBadRequest());
@@ -102,7 +111,7 @@ class LotControllerTest {
 
     @Test
     void negativeBuyPriceReturns400() throws Exception {
-        mockMvc.perform(post("/api/lots")
+        mockMvc.perform(post("/api/lots").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buyBody("Knife X", "-1", "2026-01-01T00:00:00")))
                 .andExpect(status().isBadRequest());
@@ -110,15 +119,15 @@ class LotControllerTest {
 
     @Test
     void summaryCountsHoldingsAndProfit() throws Exception {
-        String a = mockMvc.perform(post("/api/lots")
+        String a = mockMvc.perform(post("/api/lots").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buyBody("Knife A", "100", "2026-01-01T10:00:00")))
                 .andReturn().getResponse().getContentAsString();
         long idA = objectMapper.readTree(a).get("id").asLong();
-        mockMvc.perform(post("/api/lots")
+        mockMvc.perform(post("/api/lots").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(buyBody("Knife B", "200", "2026-02-01T10:00:00")));
-        mockMvc.perform(post("/api/lots/" + idA + "/sell")
+        mockMvc.perform(post("/api/lots/" + idA + "/sell").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("sellPrice", "120", "fee", "0"))))
                 .andExpect(status().isOk());
@@ -135,7 +144,7 @@ class LotControllerTest {
 
     @Test
     void updateBuyWithSellFieldsMarksSold() throws Exception {
-        String created = mockMvc.perform(post("/api/lots")
+        String created = mockMvc.perform(post("/api/lots").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buyBody("Knife C", "100", "2026-01-01T10:00:00")))
                 .andReturn().getResponse().getContentAsString();
@@ -151,7 +160,7 @@ class LotControllerTest {
         payload.put("sellPlatform", "steam");
         payload.put("fee", "2");
 
-        mockMvc.perform(put("/api/lots/" + id)
+        mockMvc.perform(put("/api/lots/" + id).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isOk())

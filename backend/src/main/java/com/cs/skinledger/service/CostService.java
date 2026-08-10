@@ -2,13 +2,11 @@ package com.cs.skinledger.service;
 
 import com.cs.skinledger.domain.Item;
 import com.cs.skinledger.domain.OtherCostEntry;
-import com.cs.skinledger.domain.User;
 import com.cs.skinledger.dto.CostRequest;
 import com.cs.skinledger.dto.CostResponse;
 import com.cs.skinledger.dto.CostSummary;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.OtherCostRepository;
-import com.cs.skinledger.repository.UserRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -33,13 +31,13 @@ public class CostService {
 
     private final OtherCostRepository repository;
     private final ItemRepository itemRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
 
     @Transactional(readOnly = true)
     public List<CostResponse> list(String category, String direction, LocalDateTime from, LocalDateTime to) {
         Specification<OtherCostEntry> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.equal(root.get("user").get("id"), localUserId()));
+            ps.add(cb.equal(root.get("user").get("id"), currentUser.id()));
             if (category != null && !category.isBlank()) {
                 ps.add(cb.equal(root.get("category"), category));
             }
@@ -63,13 +61,13 @@ public class CostService {
     public CostResponse create(CostRequest req) {
         OtherCostEntry e = new OtherCostEntry();
         apply(e, req);
-        e.setUser(localUser());
+        e.setUser(currentUser.get());
         return CostResponse.from(repository.save(e));
     }
 
     @Transactional
     public CostResponse update(Long id, CostRequest req) {
-        OtherCostEntry e = repository.findById(id)
+        OtherCostEntry e = repository.findByIdAndUserId(id, currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("记录不存在: " + id));
         apply(e, req);
         return CostResponse.from(repository.save(e));
@@ -77,14 +75,14 @@ public class CostService {
 
     @Transactional
     public void delete(Long id) {
-        OtherCostEntry e = repository.findById(id)
+        OtherCostEntry e = repository.findByIdAndUserId(id, currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("记录不存在: " + id));
         repository.delete(e);
     }
 
     @Transactional(readOnly = true)
     public CostSummary summary() {
-        Long userId = localUserId();
+        Long userId = currentUser.id();
         BigDecimal totalIncome = BigDecimal.ZERO;
         BigDecimal totalExpense = BigDecimal.ZERO;
         Map<String, BigDecimal[]> byCat = new LinkedHashMap<>();
@@ -132,16 +130,4 @@ public class CostService {
         e.setSourceRef(req.sourceRef());
     }
 
-    private Long localUserId() {
-        return localUser().getId();
-    }
-
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseGet(() -> {
-                    User user = new User();
-                    user.setUsername("local");
-                    return userRepository.save(user);
-                });
-    }
 }

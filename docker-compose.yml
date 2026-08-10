@@ -4,6 +4,7 @@
 # 环境变量：
 #   MYSQL_ROOT_PASSWORD  MySQL root 密码（必填，勿用默认值）
 #   DB_PASSWORD          ledger 账号密码（默认 ledger_pass，生产请修改）
+#   APP_ENCRYPTION_KEY   账号 Token 加密密钥（必填，至少 16 字符且升级时必须保持不变）
 #   CSQAQ_TOKEN          CSQAQ ApiToken（可选，配置后才有 UU/Steam/BUFF 行情）
 services:
   mysql:
@@ -30,6 +31,7 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/cs_skin_ledger?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
       DB_USER: ledger
       DB_PASSWORD: ${DB_PASSWORD:-ledger_pass}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?请设置 APP_ENCRYPTION_KEY}
       CSQAQ_TOKEN: ${CSQAQ_TOKEN:-}
     depends_on:
       mysql:

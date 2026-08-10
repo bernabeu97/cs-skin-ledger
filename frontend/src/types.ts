@@ -191,3 +191,9 @@ export interface FeeSettings {
   uu: number
   buff: number
 }
+
+export interface CsqaqTokenStatus {
+  configured: boolean
+  maskedToken: string | null
+  source: 'account' | 'server' | null
+}

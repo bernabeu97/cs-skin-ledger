@@ -1,10 +1,8 @@
 package com.cs.skinledger.service;
 
 import com.cs.skinledger.domain.Setting;
-import com.cs.skinledger.domain.User;
 import com.cs.skinledger.dto.FeeSettings;
 import com.cs.skinledger.repository.SettingRepository;
-import com.cs.skinledger.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
@@ -21,12 +19,12 @@ public class FeeSettingsService {
     private static final String KEY = "fees";
 
     private final SettingRepository settingRepository;
-    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
     public FeeSettings get() {
-        return settingRepository.findByUserIdAndKey(localUserId(), KEY)
+        return settingRepository.findByUserIdAndKey(currentUser.id(), KEY)
                 .map(s -> {
                     try {
                         return objectMapper.readValue(s.getValue(), FeeSettings.class);
@@ -39,9 +37,9 @@ public class FeeSettingsService {
 
     @Transactional
     public FeeSettings save(FeeSettings fees) {
-        Setting setting = settingRepository.findByUserIdAndKey(localUserId(), KEY).orElseGet(() -> {
+        Setting setting = settingRepository.findByUserIdAndKey(currentUser.id(), KEY).orElseGet(() -> {
             Setting s = new Setting();
-            s.setUser(localUser());
+            s.setUser(currentUser.get());
             s.setKey(KEY);
             return s;
         });
@@ -63,16 +61,4 @@ public class FeeSettingsService {
         return java.math.BigDecimal.ZERO;
     }
 
-    private Long localUserId() {
-        return localUser().getId();
-    }
-
-    private User localUser() {
-        return userRepository.findByUsername("local")
-                .orElseGet(() -> {
-                    User user = new User();
-                    user.setUsername("local");
-                    return userRepository.save(user);
-                });
-    }
 }

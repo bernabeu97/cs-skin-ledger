@@ -1,12 +1,13 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
-import type { FeeSettings } from '../types'
+import type { CsqaqTokenStatus, FeeSettings } from '../types'
 
 export const useSettingsStore = defineStore('settings', () => {
   const fees = ref<FeeSettings | null>(null)
   const loading = ref(false)
   const error = ref('')
+  const tokenStatus = ref<CsqaqTokenStatus | null>(null)
 
   async function loadFees() {
     loading.value = true
@@ -26,6 +27,21 @@ export const useSettingsStore = defineStore('settings', () => {
     fees.value = data
   }
 
+  async function loadTokenStatus() {
+    const { data } = await api.get<CsqaqTokenStatus>('/settings/csqaq-token')
+    tokenStatus.value = data
+  }
+
+  async function saveToken(token: string) {
+    const { data } = await api.put<CsqaqTokenStatus>('/settings/csqaq-token', { token })
+    tokenStatus.value = data
+  }
+
+  async function deleteToken() {
+    const { data } = await api.delete<CsqaqTokenStatus>('/settings/csqaq-token')
+    tokenStatus.value = data
+  }
+
   /** 某平台费率（0.005 = 0.5%），未知平台返回 0 */
   function rateFor(platform: string): number {
     if (!fees.value) return 0
@@ -35,5 +51,5 @@ export const useSettingsStore = defineStore('settings', () => {
     return 0
   }
 
-  return { fees, loading, error, loadFees, saveFees, rateFor }
+  return { fees, loading, error, tokenStatus, loadFees, saveFees, loadTokenStatus, saveToken, deleteToken, rateFor }
 })

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
@@ -13,12 +14,14 @@ import java.nio.file.Path;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@WithMockUser(username = "local")
 class ItemControllerTest {
 
     @Autowired
@@ -40,7 +43,7 @@ class ItemControllerTest {
                 "[{\"id\":\"crate-1\",\"name\":\"Revolution Case\",\"market_hash_name\":\"Revolution Case\"}]");
         Files.writeString(dir.resolve("crates_zh_CN.json"), "[{\"id\":\"crate-1\",\"name\":\"变革箱\"}]");
 
-        mockMvc.perform(post("/api/items/import").param("dir", dir.toString()))
+        mockMvc.perform(post("/api/items/import").with(csrf()).param("dir", dir.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.created").value(2))
                 .andExpect(jsonPath("$.byCategory.skins").value(1))
