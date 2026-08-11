@@ -56,13 +56,13 @@ class AlertServiceTest {
     }
 
     private PriceQuote quote(String price) {
-        return new PriceQuote(item.getId(), "AK-47 | Alert Test (Field-Tested)", "久经沙场", "uu",
+        return new PriceQuote(item.getId(), "AK-47 | Alert Test (Field-Tested)", null, "uu",
                 new BigDecimal(price), null, null, "CNY", LocalDateTime.now());
     }
 
     @Test
     void gtAlertTriggersOnceUntilReset() {
-        alertService.create(new AlertCreateRequest(item.getId(), "uu", "gt", new BigDecimal("100")));
+        alertService.create(new AlertCreateRequest(item.getId(), null, "uu", "gt", new BigDecimal("100")));
 
         List<AlertResponse> first = alertService.check(List.of(quote("120")));
         assertEquals(1, first.size());
@@ -71,8 +71,9 @@ class AlertServiceTest {
         List<AlertResponse> second = alertService.check(List.of(quote("130")));
         assertTrue(second.isEmpty());
 
-        AlertResponse reset = alertService.reset(first.get(0).id());
-        assertNull(reset.triggeredAt());
+        // 价格回到阈值另一侧后自动重新布防。
+        assertTrue(alertService.check(List.of(quote("90"))).isEmpty());
+        assertNull(alertRepository.findById(first.get(0).id()).orElseThrow().getTriggeredAt());
 
         List<AlertResponse> third = alertService.check(List.of(quote("140")));
         assertEquals(1, third.size());
@@ -80,7 +81,7 @@ class AlertServiceTest {
 
     @Test
     void ltAlertTriggersWhenBelowThreshold() {
-        alertService.create(new AlertCreateRequest(item.getId(), "uu", "lt", new BigDecimal("100")));
+        alertService.create(new AlertCreateRequest(item.getId(), null, "uu", "lt", new BigDecimal("100")));
 
         List<AlertResponse> hit = alertService.check(List.of(quote("80")));
         assertEquals(1, hit.size());

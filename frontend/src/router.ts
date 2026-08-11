@@ -3,6 +3,7 @@ import DashboardView from './views/DashboardView.vue'
 import TradesView from './views/TradesView.vue'
 import OtherCostsView from './views/OtherCostsView.vue'
 import SettingsView from './views/SettingsView.vue'
+import MarketView from './views/MarketView.vue'
 import LoginView from './views/LoginView.vue'
 import { useAuthStore } from './stores/auth'
 
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: '/', name: 'dashboard', component: DashboardView },
     { path: '/trades', name: 'trades', component: TradesView },
     { path: '/costs', name: 'costs', component: OtherCostsView },
+    { path: '/market', name: 'market', component: MarketView },
     { path: '/settings', name: 'settings', component: SettingsView }
   ]
 })

@@ -136,6 +136,7 @@ export interface PriceRefreshResult {
   failed: number
   errors: string[]
   byPlatform: Record<string, number>
+  triggeredAlerts: PriceAlert[]
 }
 
 export interface PriceConfigView {
@@ -150,6 +151,7 @@ export interface PriceAlert {
   itemId: number
   itemName: string
   itemNameZh: string | null
+  exterior: string | null
   platform: string
   condition: 'gt' | 'lt'
   threshold: number
@@ -173,6 +175,44 @@ export interface OtherCost {
   itemNameZh: string | null
   note: string | null
   sourceRef: string | null
+}
+
+export interface WatchlistItem {
+  id: number
+  itemId: number
+  itemName: string
+  itemNameZh: string | null
+  exterior: string | null
+  currentPrice: number | null
+  priceAt: string | null
+  change24h: number | null
+  changePercent24h: number | null
+  createdAt: string
+}
+
+export interface PricePoint {
+  at: string
+  value: number
+}
+
+export interface PriceHistoryView {
+  itemId: number
+  itemName: string
+  itemNameZh: string | null
+  exterior: string | null
+  platform: 'uu'
+  period: '24h' | '7d' | '30d' | '90d'
+  points: PricePoint[]
+}
+
+export interface MarketIndexView {
+  kind: 'holdings' | 'watchlist'
+  period: '24h' | '7d' | '30d' | '90d'
+  currentValue: number | null
+  marketValue: number | null
+  changePercent: number | null
+  asOf: string | null
+  points: PricePoint[]
 }
 
 export interface CostRequest {

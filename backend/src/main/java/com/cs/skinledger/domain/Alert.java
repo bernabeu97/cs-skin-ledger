@@ -38,6 +38,9 @@ public class Alert {
     @JoinColumn(name = "item_id", nullable = false)
     private Item item;
 
+    @Column(length = 16)
+    private String exterior;
+
     @Column(nullable = false, length = 16)
     private String platform;
 

@@ -5,6 +5,7 @@ import type { PriceAlert } from '../types'
 
 export interface AlertCreatePayload {
   itemId: number
+  exterior?: string
   platform: string
   condition: 'gt' | 'lt'
   threshold: number

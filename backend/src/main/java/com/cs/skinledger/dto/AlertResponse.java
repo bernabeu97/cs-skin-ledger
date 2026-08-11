@@ -11,6 +11,7 @@ public record AlertResponse(
         Long itemId,
         String itemName,
         String itemNameZh,
+        String exterior,
         String platform,
         String condition,
         BigDecimal threshold,
@@ -20,7 +21,7 @@ public record AlertResponse(
     public static AlertResponse from(Alert a) {
         Item item = a.getItem();
         return new AlertResponse(a.getId(), item.getId(), item.getMarketHashName(), item.getNameZh(),
-                a.getPlatform(), a.getCondition(), a.getThreshold(),
+                a.getExterior(), a.getPlatform(), a.getCondition(), a.getThreshold(),
                 Boolean.TRUE.equals(a.getEnabled()), a.getTriggeredAt());
     }
 }

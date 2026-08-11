@@ -1,0 +1,57 @@
+name: build-desktop-msi
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+jobs:
+  windows-msi:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verify Vue application
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build Windows MSI
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: frontend
+          args: --bundles msi
+
+      - name: Generate SHA256
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "frontend/src-tauri/target/release/bundle/msi" -Filter "*.msi"
+          if (-not $msi) { throw "MSI was not generated" }
+          foreach ($file in $msi) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash *$($file.Name)" | Set-Content -Encoding ascii -LiteralPath "$($file.FullName).sha256"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cs-skin-ticker-windows-msi
+          path: |
+            frontend/src-tauri/target/release/bundle/msi/*.msi
+            frontend/src-tauri/target/release/bundle/msi/*.sha256
+          if-no-files-found: error

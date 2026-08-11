@@ -11,9 +11,12 @@ import com.cs.skinledger.dto.PriceConfigView;
 import com.cs.skinledger.dto.PriceQuote;
 import com.cs.skinledger.dto.PriceRefreshResult;
 import com.cs.skinledger.dto.PriceTarget;
+import com.cs.skinledger.dto.PriceHistoryView;
+import com.cs.skinledger.dto.PricePoint;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
 import com.cs.skinledger.repository.PriceSnapshotRepository;
+import com.cs.skinledger.repository.WatchlistRepository;
 import com.cs.skinledger.service.price.PriceProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +47,9 @@ public class PriceService {
     private final LotRepository lotRepository;
     private final ItemRepository itemRepository;
     private final PriceSnapshotRepository snapshotRepository;
+    private final WatchlistRepository watchlistRepository;
     private final AlertService alertService;
+    private final MarketIndexService marketIndexService;
     private final AppPriceProperties props;
     private final CurrentUser currentUser;
     private final List<PriceProvider> providers;
@@ -82,7 +87,12 @@ public class PriceService {
             }
         }
 
+        quotes = quotes.stream().filter(q -> wanted.contains(q.platform())).toList();
         int saved = saveQuotes(quotes);
+        if (saved > 0) {
+            marketIndexService.captureCurrentUser();
+            snapshotRepository.deleteByFetchedAtBefore(LocalDateTime.now().minusDays(100));
+        }
         List<com.cs.skinledger.dto.AlertResponse> triggered = alertService.check(quotes);
         if (!triggered.isEmpty()) {
             log.info("行情刷新后触发价格提醒 {} 条", triggered.size());
@@ -90,7 +100,8 @@ public class PriceService {
         for (PriceQuote q : quotes) {
             byPlatform.merge(q.platform(), 1, Integer::sum);
         }
-        return new PriceRefreshResult(start, LocalDateTime.now(), requested, saved, errors.size(), errors, byPlatform);
+        return new PriceRefreshResult(start, LocalDateTime.now(), requested, saved, errors.size(), errors,
+                byPlatform, triggered);
     }
 
     /** 持仓估值：每个持有批次按平台优先级取最新价，计算市值与浮动盈亏 */
@@ -162,6 +173,27 @@ public class PriceService {
         return new PriceConfigView(csqaq, steam, uu, messages);
     }
 
+    @Transactional(readOnly = true)
+    public PriceHistoryView history(Long itemId, String exterior, String period) {
+        Item item = itemRepository.findById(itemId)
+                .orElseThrow(() -> new IllegalArgumentException("饰品不存在：" + itemId));
+        LocalDateTime from = switch (period) {
+            case "24h" -> LocalDateTime.now().minusHours(24);
+            case "7d" -> LocalDateTime.now().minusDays(7);
+            case "30d" -> LocalDateTime.now().minusDays(30);
+            case "90d" -> LocalDateTime.now().minusDays(90);
+            default -> throw new IllegalArgumentException("period 仅支持 24h、7d、30d、90d");
+        };
+        String normalizedExterior = exterior == null || exterior.isBlank() ? null : exterior.trim();
+        List<PriceSnapshot> rows = snapshotRepository.findHistory(itemId, normalizedExterior, "uu", from);
+        List<PriceSnapshot> sampled = downsample(rows, 500);
+        List<PricePoint> points = sampled.stream()
+                .map(row -> new PricePoint(row.getFetchedAt(), row.getPrice()))
+                .toList();
+        return new PriceHistoryView(itemId, item.getMarketHashName(), item.getNameZh(), normalizedExterior,
+                "uu", period, points);
+    }
+
     private PriceSnapshot pickSnapshot(Map<String, PriceSnapshot> byPlatform) {
         if (byPlatform == null || byPlatform.isEmpty()) {
             return null;
@@ -185,6 +217,11 @@ public class PriceService {
                     PriceTarget t = new PriceTarget(item.getId(), item.getMarketHashName(), l.getExterior());
                     byName.putIfAbsent(t.fullMarketHashName(), t);
                 });
+        watchlistRepository.findByUserIdOrderBySortOrderAscIdAsc(currentUser.id()).forEach(entry -> {
+            String exterior = entry.getExterior() == null || entry.getExterior().isBlank() ? null : entry.getExterior();
+            PriceTarget target = new PriceTarget(entry.getItem().getId(), entry.getItem().getMarketHashName(), exterior);
+            byName.putIfAbsent(target.fullMarketHashName(), target);
+        });
         return new ArrayList<>(byName.values());
     }
 
@@ -235,5 +272,15 @@ public class PriceService {
 
     private String priceKey(Long itemId, String exterior) {
         return itemId + "|" + (exterior == null ? "" : exterior.trim());
+    }
+
+    private <T> List<T> downsample(List<T> rows, int maxPoints) {
+        if (rows.size() <= maxPoints) return rows;
+        int step = (int) Math.ceil(rows.size() / (double) maxPoints);
+        List<T> sampled = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i += step) sampled.add(rows.get(i));
+        T last = rows.getLast();
+        if (sampled.getLast() != last) sampled.add(last);
+        return sampled;
     }
 }

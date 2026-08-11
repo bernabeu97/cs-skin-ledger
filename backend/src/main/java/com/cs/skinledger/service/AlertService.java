@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 价格提醒：增删改查 + 行情刷新后检查触发（gt=高于阈值，lt=低于阈值，触发一次后需手动重置）。
+ * UU 价格提醒：增删改查 + 行情刷新后检查触发（gt=高于阈值，lt=低于阈值）。
  */
 @Service
 @RequiredArgsConstructor
@@ -41,7 +41,8 @@ public class AlertService {
         Alert alert = new Alert();
         alert.setUser(currentUser.get());
         alert.setItem(item);
-        alert.setPlatform(req.platform());
+        alert.setExterior(normalize(req.exterior()));
+        alert.setPlatform(req.platform().trim().toLowerCase());
         alert.setCondition(req.condition());
         alert.setThreshold(req.threshold());
         alert.setEnabled(true);
@@ -70,21 +71,29 @@ public class AlertService {
         }
         Map<String, PriceQuote> latest = new HashMap<>();
         for (PriceQuote q : quotes) {
-            latest.putIfAbsent(q.itemId() + "|" + q.platform(), q);
+            latest.putIfAbsent(key(q.itemId(), q.exterior(), q.platform()), q);
         }
         List<AlertResponse> triggered = new ArrayList<>();
         List<Alert> alerts = alertRepository.findByUserId(currentUser.id());
         LocalDateTime now = LocalDateTime.now();
         for (Alert alert : alerts) {
-            if (!Boolean.TRUE.equals(alert.getEnabled()) || alert.getTriggeredAt() != null) {
+            if (!Boolean.TRUE.equals(alert.getEnabled())) {
                 continue;
             }
-            PriceQuote q = latest.get(alert.getItem().getId() + "|" + alert.getPlatform());
+            PriceQuote q = latest.get(key(alert.getItem().getId(), alert.getExterior(), alert.getPlatform()));
             if (q == null || q.price() == null) {
                 continue;
             }
             int cmp = q.price().compareTo(alert.getThreshold());
             boolean hit = "gt".equals(alert.getCondition()) ? cmp > 0 : cmp < 0;
+            if (alert.getTriggeredAt() != null) {
+                if (!hit) {
+                    // 回到阈值另一侧后自动重新布防，避免用户手动重置。
+                    alert.setTriggeredAt(null);
+                    alertRepository.save(alert);
+                }
+                continue;
+            }
             if (hit) {
                 alert.setTriggeredAt(now);
                 triggered.add(AlertResponse.from(alertRepository.save(alert)));
@@ -96,5 +105,17 @@ public class AlertService {
     private Alert ownedAlert(Long id) {
         return alertRepository.findByIdAndUserId(id, currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("提醒不存在: " + id));
+    }
+
+    private String key(Long itemId, String exterior, String platform) {
+        return itemId + "|" + (normalize(exterior) == null ? "" : normalize(exterior))
+                + "|" + platform.trim().toLowerCase();
+    }
+
+    private String normalize(String exterior) {
+        if (exterior == null || exterior.isBlank()) {
+            return null;
+        }
+        return exterior.trim();
     }
 }

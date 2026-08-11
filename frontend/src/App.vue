@@ -15,6 +15,7 @@ const auth = useAuthStore()
         <router-link to="/" class="nav-link">仪表盘</router-link>
         <router-link to="/trades" class="nav-link">饰品账本</router-link>
         <router-link to="/costs" class="nav-link">其他收支</router-link>
+        <router-link to="/market" class="nav-link">行情盯盘</router-link>
         <router-link to="/settings" class="nav-link">设置</router-link>
       </nav>
       <div class="account">

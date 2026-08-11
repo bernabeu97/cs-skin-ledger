@@ -40,13 +40,13 @@ npm.cmd run dev
 
 - 交易记录：新增/编辑/删除/筛选，CSV 导入，CSV/JSON/Excel 导出
 - 仪表盘：持仓总成本、已实现盈亏、持仓列表、月度盈亏图
+- 行情盯盘：持仓指数、自选指数、UU 单品历史、自选清单与磨损级提醒
 - 卖出校验：卖出数量不能超过当前持仓（含手续费成本）
 - 账号：注册、登录、退出；交易、批次、其他收支、提醒、费率与 Token 均按账号隔离
 
 ## 说明
 
-- 浮动盈亏（当前市价）待行情采集模块（M2/M3）接入。
-- 平台费率（Steam 约 15%、BUFF 约 2.5%）后续做成配置项。
+- 当前市值、浮动盈亏、行情历史和价格提醒统一采用 UU 出售价。
 - 数据在本机 MySQL，请定期导出 CSV/JSON 备份。
 
 ## 饰品数据字典（CSGO-API）
@@ -56,11 +56,10 @@ npm.cmd run dev
   `Invoke-RestMethod -Uri 'http://localhost:8080/api/items/import?dir=work/csgoapi' -Method Post`
 - 交易录入时饰品为字典下拉（支持中文关键词搜索），皮肤类可选磨损等级与磨损值（0-1）。
 
-## 行情模块（M2/M3：Steam/UU/BUFF 市场价 + 浮动盈亏）
+## 行情模块（UU 市场价 + 浮动盈亏）
 
 ### 数据源说明（重要）
-- 主数据源 **CSQAQ 数据开放 API**（https://csqaq.com，免费注册）：一次批量请求最多 50 个 marketHashName，同时返回
-  **UU(悠悠有品)/Steam/BUFF 三平台出售价**。这是当前获取 UU 市场价最可靠的途径。
+- 主数据源 **CSQAQ 数据开放 API**（https://csqaq.com，免费注册）：一次批量请求最多 50 个 marketHashName；项目只读取并展示其返回的 **UU（悠悠有品）出售价**。
 - 备用：Steam 社区市场直连（app.price.steam.enabled=true，本机网络可能超时）；UU 直连（app.price.youpin.enabled=true，
   需要抓包登录 token 写入 work/uu_token.txt，且 api.youpin898.com 有阿里云 WAF 风控，可能被拦截）。
 
@@ -76,17 +75,19 @@ Invoke-RestMethod -Uri 'http://localhost:8080/api/prices/import-market-ids?dir=w
 ```
 
 ### 使用
-- 仪表盘 → “刷新行情”：为所有持有批次抓取最新价并写入 price_snapshots。
+- 仪表盘或行情盯盘 → “刷新 UU 行情”：为持有批次和自选饰品抓取最新价并写入 price_snapshots。
 - 仪表盘新增卡片：当前市值、浮动盈亏；持仓表新增 UU 价 / Steam 价 / 当前价 / 浮动盈亏列；当前市值与浮动盈亏统一只采用 UU 价。
 - 接口：
-  - POST /api/prices/refresh?platforms=uu,steam,buff
+  - POST /api/prices/refresh?platforms=uu
   - GET  /api/prices/valuation   （持仓估值）
   - GET  /api/prices/config      （数据源配置状态）
+  - GET  /api/prices/history     （按饰品和磨损查询 24h/7d/30d/90d 历史）
+  - GET  /api/prices/index       （持仓/自选组合指数）
+  - GET/POST/DELETE /api/watchlist（最多 50 个“饰品 + 磨损”组合）
 - 批次需填写“磨损等级”才能拼出完整市场名（如 AK-47 | Hydroponic (Field-Tested)）查询到价格。
 
 ### 已知限制（待处理）
 - UU 直连受 WAF 风控，优先使用 CSQAQ。
-- Steam 直连在本机网络超时，优先使用 CSQAQ 的 steamSellPrice。
 - CSQAQ 的 UU/BUFF 价格为整数元粒度。
 - CSQAQ ApiToken 绑定本机 IP，多人部署时各环境需各自配置。
 
@@ -117,6 +118,15 @@ docker compose up -d --build
 - 单价口径：buyPrice/sellPrice 为单件单价，quantity 表达数量；盈亏=数量×卖出价−手续费−数量×买入价。
 - `lots.source_ref` 幂等去重（Excel 导入用 `xls:行号`），重复导入自动跳过。
 - Excel 解析脚本：work/uu_import/parse_excel.py；原始抓取数据存档在 work/uu_import/。
+- 网页首次点击“导入 UU JSON”会显示三步使用说明；导出插件源码：<https://github.com/bernabeu97/youpin898-record-exporter>。Chrome 需下载 ZIP 后在 `chrome://extensions` 开启开发者模式并“加载已解压的扩展程序”。
+- 当前网页不能自动判断插件是否安装，因此保留固定的“安装/使用帮助”入口；首次成功导入后，主按钮会直接打开文件选择器。
+
+## Windows 桌面盯盘
+
+- 技术栈：Tauri 2 + Vue 3；支持置顶小窗、托盘、持仓/自选指数、单品价格历史、磨损级提醒、离线缓存与 1/5/10/30 分钟刷新。
+- “大盘”页暂不展示伪造指数，待接入有明确成分与授权的数据源后启用。
+- 本地开发 API 默认 `http://localhost:8080`。公网 HTTP 仅允许手动登录且不保存密码；使用 Windows 凭据管理器记住密码需要 `localhost` 或 HTTPS。
+- 本机不安装 Rust/Windows SDK。推送 `desktop-v*` 标签或在 GitHub Actions 手动运行 `build-desktop-msi`，可获得未签名 MSI 与对应 SHA256；首次安装可能出现 Windows SmartScreen 提示。
 
 ## 其他收支（会员费 / 赔偿 / 退款等）
 

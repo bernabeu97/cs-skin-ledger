@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ColumnPicker from '../components/ColumnPicker.vue'
@@ -25,7 +25,7 @@ const LOT_COLUMNS = [
   { key: 'profit', label: '盈亏' }, { key: 'status', label: '状态' }, { key: 'note', label: '备注' }
 ]
 const ALERT_COLUMNS = [
-  { key: 'item', label: '饰品' }, { key: 'platform', label: '平台' }, { key: 'condition', label: '条件' },
+  { key: 'item', label: '饰品' }, { key: 'exterior', label: '磨损' }, { key: 'platform', label: '平台' }, { key: 'condition', label: '条件' },
   { key: 'threshold', label: '阈值' }, { key: 'status', label: '状态' }
 ]
 
@@ -52,6 +52,7 @@ const route = useRoute()
 const alertsStore = useAlertsStore()
 const tab = ref<'lots' | 'alerts'>('lots')
 const alertItem = ref<Item | null>(null)
+const alertExterior = ref('')
 const alertPlatform = ref('uu')
 const alertCondition = ref<'gt' | 'lt'>('gt')
 const alertThreshold = ref<number | null>(null)
@@ -59,6 +60,7 @@ const alertBusy = ref(false)
 const deleteAlertTarget = ref<PriceAlert | null>(null)
 const uuFileEl = ref<HTMLInputElement | null>(null)
 const importingUu = ref(false)
+const showUuGuide = ref(false)
 const { visibleColumns: lotVisibleColumns } = useColumnVisibility('columns:lots', LOT_COLUMNS)
 const { visibleColumns: alertVisibleColumns, isColumnVisible: isAlertColumnVisible } = useColumnVisibility('columns:alerts', ALERT_COLUMNS)
 
@@ -201,6 +203,21 @@ function downloadTemplate() {
   downloadBlob(new Blob(['\uFEFF' + header + '\n'], { type: 'text/csv' }), 'lots_template.csv')
 }
 
+function requestUuImport(forceGuide = false) {
+  const importedBefore = window.localStorage.getItem('uu-json-import-completed') === '1'
+  if (forceGuide || !importedBefore) {
+    showUuGuide.value = true
+    return
+  }
+  uuFileEl.value?.click()
+}
+
+async function chooseUuJson() {
+  showUuGuide.value = false
+  await nextTick()
+  uuFileEl.value?.click()
+}
+
 async function onUuJsonSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -213,6 +230,7 @@ async function onUuJsonSelected(event: Event) {
   importingUu.value = true
   try {
     const result = await store.importUuFullJson(file)
+    window.localStorage.setItem('uu-json-import-completed', '1')
     const imported = result.holdingsImported + result.salesImported
     const skipped = result.holdingsSkippedDuplicates + result.salesSkippedDuplicates
     ui.toast('success', `UU 数据导入完成：新增 ${imported} 条，重复跳过 ${skipped} 条`, 6000)
@@ -235,11 +253,13 @@ async function addAlert() {
   try {
     await alertsStore.createAlert({
       itemId: alertItem.value.id,
+      exterior: alertExterior.value || undefined,
       platform: alertPlatform.value,
       condition: alertCondition.value,
       threshold: alertThreshold.value
     })
     alertItem.value = null
+    alertExterior.value = ''
     alertThreshold.value = null
     ui.toast('success', '价格提醒已添加')
   } catch (e) {
@@ -297,6 +317,7 @@ onMounted(() => {
     applyRouteTarget()
   })()
 })
+watch(alertItem, () => { alertExterior.value = '' })
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 </script>
 
@@ -380,8 +401,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         class="btn btn-ghost btn-sm"
         title="导入悠悠有品全量记录 JSON（重复记录自动跳过）"
         :disabled="importingUu"
-        @click="uuFileEl?.click()"
+        @click="requestUuImport()"
       >{{ importingUu ? '导入中…' : '导入 UU JSON' }}</button>
+      <button type="button" class="btn btn-ghost btn-sm" @click="requestUuImport(true)">安装/使用帮助</button>
       <div class="export-group">
         <button type="button" class="btn btn-ghost btn-sm" title="导出 CSV" @click="onExport('csv')">CSV</button>
         <button type="button" class="btn btn-ghost btn-sm" title="导出 JSON" @click="onExport('json')">JSON</button>
@@ -441,11 +463,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       </div>
       <div class="alert-bar">
         <ItemSelect v-model="alertItem" placeholder="搜索要提醒的饰品（支持中文）" />
-        <select v-model="alertPlatform" class="input" style="width:auto">
-          <option value="uu">UU</option>
-          <option value="steam">Steam</option>
-          <option value="buff">BUFF</option>
+        <select v-model="alertExterior" class="input" style="width:auto" :disabled="!alertItem">
+          <option value="">无磨损 / 不区分</option>
+          <option v-for="wear in alertItem?.wears ?? []" :key="wear" :value="wear">{{ wear }}</option>
         </select>
+        <span class="badge badge-muted mono">UU</span>
         <select v-model="alertCondition" class="input" style="width:auto">
           <option value="gt">价格高于</option>
           <option value="lt">价格低于</option>
@@ -472,6 +494,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
           <thead>
             <tr>
               <th v-if="isAlertColumnVisible('item')">饰品</th>
+              <th v-if="isAlertColumnVisible('exterior')">磨损</th>
               <th v-if="isAlertColumnVisible('platform')">平台</th>
               <th v-if="isAlertColumnVisible('condition')">条件</th>
               <th v-if="isAlertColumnVisible('threshold')" class="num-head">阈值</th>
@@ -484,6 +507,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
           <tbody v-else>
             <tr v-for="a in alertsStore.alerts" :key="a.id">
               <td v-if="isAlertColumnVisible('item')">{{ a.itemNameZh ?? a.itemName }}</td>
+              <td v-if="isAlertColumnVisible('exterior')">{{ a.exterior ?? '-' }}</td>
               <td v-if="isAlertColumnVisible('platform')"><span class="badge badge-muted mono">{{ a.platform }}</span></td>
               <td v-if="isAlertColumnVisible('condition')">{{ a.condition === 'gt' ? '价格高于' : '价格低于' }}</td>
               <td v-if="isAlertColumnVisible('threshold')" class="num">{{ formatMoney(a.threshold) }}</td>
@@ -511,6 +535,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         @confirm="confirmDeleteAlert"
         @cancel="deleteAlertTarget = null"
       />
+    </div>
+
+    <div v-if="showUuGuide" class="dialog-mask" role="dialog" aria-modal="true" aria-labelledby="uu-guide-title" @click.self="showUuGuide = false">
+      <section class="dialog-panel uu-guide">
+        <header class="guide-head">
+          <div>
+            <span class="guide-kicker">UU JSON 导入</span>
+            <h2 id="uu-guide-title">先用 Chrome 扩展导出悠悠有品记录</h2>
+          </div>
+          <button type="button" class="guide-close" aria-label="关闭" @click="showUuGuide = false">×</button>
+        </header>
+        <ol class="guide-steps">
+          <li><b>下载扩展源码</b><span>仓库暂未提供商店版或安装包，需要下载 ZIP 并解压。</span></li>
+          <li><b>在 Chrome 加载</b><span>打开 chrome://extensions，开启“开发者模式”，点击“加载已解压的扩展程序”。</span></li>
+          <li><b>导出并选择 JSON</b><span>登录悠悠有品，在页面右下角导出交易记录，再回到这里选择 JSON 文件。</span></li>
+        </ol>
+        <div class="guide-note">扩展负责导出已完成的买卖记录；撤销订单、赔偿和钱包流水不会自动包含。</div>
+        <footer class="guide-actions">
+          <a class="btn" href="https://github.com/bernabeu97/youpin898-record-exporter/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">下载 ZIP</a>
+          <a class="btn btn-ghost" href="https://github.com/bernabeu97/youpin898-record-exporter" target="_blank" rel="noreferrer">查看 GitHub</a>
+          <span class="guide-spacer"></span>
+          <button type="button" class="btn btn-primary" @click="chooseUuJson">选择 JSON 文件</button>
+        </footer>
+      </section>
     </div>
   </div>
 </template>
@@ -548,11 +596,27 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .alert-bar .item-select { flex: 1; min-width: 220px; }
 .danger-text { color: var(--danger) !important; }
 .empty-state.compact { padding: 12px; }
+.uu-guide { max-width: 650px; padding: 0; overflow: hidden; }
+.guide-head { display: flex; justify-content: space-between; gap: 16px; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
+.guide-head h2 { margin: 3px 0 0; font-size: 18px; }
+.guide-kicker { font-family: var(--font-mono); color: var(--accent); font-size: 11px; letter-spacing: .08em; }
+.guide-close { border: 0; background: transparent; color: var(--text-muted); font-size: 24px; line-height: 1; cursor: pointer; border-radius: var(--radius-sm); }
+.guide-close:hover { color: var(--text); background: var(--surface-muted); }
+.guide-steps { margin: 0; padding: 18px 22px 8px 58px; counter-reset: guide; }
+.guide-steps li { position: relative; list-style: none; display: flex; flex-direction: column; gap: 2px; margin-bottom: 17px; }
+.guide-steps li::before { counter-increment: guide; content: counter(guide); position: absolute; left: -36px; top: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+.guide-steps b { font-size: 13px; }
+.guide-steps span { color: var(--text-secondary); font-size: 12px; }
+.guide-note { margin: 0 22px 18px; padding: 9px 11px; border: 1px solid #f5c77b; border-radius: var(--radius-sm); background: #fff7e6; color: #7a4f01; font-size: 11px; }
+.guide-actions { display: flex; align-items: center; gap: 7px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.guide-spacer { flex: 1; }
 @media (max-width: 640px) {
   .hint { display: none; }
   .toolbar .search { width: 100%; }
   .spacer { display: none; }
   .range-group { width: 100%; }
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  .guide-actions { align-items: stretch; flex-direction: column; }
+  .guide-spacer { display: none; }
 }
 </style>

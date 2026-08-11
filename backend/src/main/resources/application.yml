@@ -46,6 +46,6 @@ app:
       enabled: false
       token-file: work/uu_token.txt
       timeout-seconds: 12
-    default-sources: uu,steam,buff
+    default-sources: uu
     refresh-interval-minutes: 0
     refresh-initial-delay-seconds: 300

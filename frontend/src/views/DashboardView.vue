@@ -21,8 +21,7 @@ const PERIODS = [
 ] as const
 const HOLDING_COLUMNS = [
   { key: 'item', label: '饰品' }, { key: 'exterior', label: '磨损' }, { key: 'quantity', label: '数量' },
-  { key: 'buyPrice', label: '买入价' }, { key: 'uuPrice', label: 'UU 价' },
-  { key: 'steamPrice', label: 'Steam 价', defaultVisible: false }, { key: 'currentPrice', label: '当前价（UU）' },
+  { key: 'buyPrice', label: '买入价' }, { key: 'currentPrice', label: '当前价（UU）' },
   { key: 'unrealizedPnl', label: '浮动盈亏' }, { key: 'buyTime', label: '买入时间' }, { key: 'buyPlatform', label: '买入平台' }
 ]
 const period = ref<'month' | 'week' | 'day' | 'year'>('month')
@@ -93,7 +92,7 @@ async function refreshPrices() {
   refreshingPrices.value = true
   priceMessage.value = ''
   try {
-    const result = await store.refreshPrices()
+    const result = await store.refreshPrices('uu')
     const parts = Object.entries(result.byPlatform)
       .filter(([, n]) => n > 0)
       .map(([p, n]) => `${p} ${n} 条`)
@@ -220,8 +219,6 @@ onMounted(loadAll)
             <th v-if="isHoldingColumnVisible('exterior')">磨损</th>
             <th v-if="isHoldingColumnVisible('quantity')" class="num-head">数量</th>
             <th v-if="isHoldingColumnVisible('buyPrice')" class="num-head">买入价</th>
-            <th v-if="isHoldingColumnVisible('uuPrice')" class="num-head">UU 价</th>
-            <th v-if="isHoldingColumnVisible('steamPrice')" class="num-head">Steam 价</th>
             <th v-if="isHoldingColumnVisible('currentPrice')" class="num-head">当前价(UU)</th>
             <th v-if="isHoldingColumnVisible('unrealizedPnl')" class="num-head">浮动盈亏</th>
             <th v-if="isHoldingColumnVisible('buyTime')" class="num-head">买入时间</th>
@@ -239,8 +236,6 @@ onMounted(loadAll)
             <td v-if="isHoldingColumnVisible('exterior')">{{ lot.exterior ?? '-' }}</td>
             <td v-if="isHoldingColumnVisible('quantity')" class="num">{{ formatQty(lot.quantity) }}</td>
             <td v-if="isHoldingColumnVisible('buyPrice')" class="num">{{ formatMoney(lot.buyPrice) }}</td>
-            <td v-if="isHoldingColumnVisible('uuPrice')" class="num">{{ valuationMap.get(lot.id)?.latestPrices.uu != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.uu) : '-' }}</td>
-            <td v-if="isHoldingColumnVisible('steamPrice')" class="num">{{ valuationMap.get(lot.id)?.latestPrices.steam != null ? formatMoney(valuationMap.get(lot.id)!.latestPrices.steam) : '-' }}</td>
             <td v-if="isHoldingColumnVisible('currentPrice')" class="num">
                 <template v-if="valuationMap.get(lot.id)?.currentPrice != null">
                   {{ formatMoney(valuationMap.get(lot.id)!.currentPrice!) }}

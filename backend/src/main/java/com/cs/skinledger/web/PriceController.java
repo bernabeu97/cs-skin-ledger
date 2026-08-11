@@ -4,7 +4,10 @@ import com.cs.skinledger.dto.MarketplaceIdImportResult;
 import com.cs.skinledger.dto.PortfolioValuation;
 import com.cs.skinledger.dto.PriceConfigView;
 import com.cs.skinledger.dto.PriceRefreshResult;
+import com.cs.skinledger.dto.PriceHistoryView;
+import com.cs.skinledger.dto.MarketIndexView;
 import com.cs.skinledger.service.MarketplaceIdImportService;
+import com.cs.skinledger.service.MarketIndexService;
 import com.cs.skinledger.service.PriceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +29,7 @@ public class PriceController {
 
     private final PriceService priceService;
     private final MarketplaceIdImportService marketplaceIdImportService;
+    private final MarketIndexService marketIndexService;
 
     /** 行情配置状态（前端用于提示是否已配置 CSQAQ 等） */
     @GetMapping("/config")
@@ -46,6 +50,19 @@ public class PriceController {
     @GetMapping("/valuation")
     public PortfolioValuation valuation() {
         return priceService.valuation();
+    }
+
+    @GetMapping("/history")
+    public PriceHistoryView history(@RequestParam Long itemId,
+                                    @RequestParam(required = false) String exterior,
+                                    @RequestParam(defaultValue = "24h") String period) {
+        return priceService.history(itemId, exterior, period);
+    }
+
+    @GetMapping("/index")
+    public MarketIndexView index(@RequestParam(defaultValue = "holdings") String kind,
+                                 @RequestParam(defaultValue = "24h") String period) {
+        return marketIndexService.history(kind, period);
     }
 
     /** 导入平台商品 ID 映射（work/cs2_marketplaceids.json） */

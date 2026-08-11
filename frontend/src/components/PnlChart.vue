@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PnlRow } from '../types'
 import { formatMoney, formatSignedMoney } from '../utils/format'
+
+echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{ rows: PnlRow[]; loading: boolean; periodLabel: string }>()
 const el = ref<HTMLDivElement | null>(null)

@@ -13,5 +13,6 @@ public record PriceRefreshResult(
         int ok,
         int failed,
         List<String> errors,
-        java.util.Map<String, Integer> byPlatform) {
+        java.util.Map<String, Integer> byPlatform,
+        List<AlertResponse> triggeredAlerts) {
 }
