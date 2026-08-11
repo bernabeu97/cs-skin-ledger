@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
-import type { MarketIndexView, PriceHistoryView, WatchlistItem } from '../types'
+import type { CsqaqIndex, CsqaqIndexKline, CsqaqKlinePeriod, MarketIndexView, PriceHistoryView, WatchlistItem } from '../types'
 
 export type MarketPeriod = '24h' | '7d' | '30d' | '90d'
 export type IndexKind = 'holdings' | 'watchlist'
@@ -10,6 +10,8 @@ export const useMarketStore = defineStore('market', () => {
   const watchlist = ref<WatchlistItem[]>([])
   const history = ref<PriceHistoryView | null>(null)
   const index = ref<MarketIndexView | null>(null)
+  const csqaqIndices = ref<CsqaqIndex[]>([])
+  const csqaqKline = ref<CsqaqIndexKline | null>(null)
   const loading = ref(false)
   const error = ref('')
 
@@ -64,5 +66,35 @@ export const useMarketStore = defineStore('market', () => {
     }
   }
 
-  return { watchlist, history, index, loading, error, loadWatchlist, addWatch, deleteWatch, loadHistory, loadIndex }
+  async function loadCsqaqIndices() {
+    loading.value = true
+    error.value = ''
+    try {
+      const { data } = await api.get<CsqaqIndex[]>('/prices/csqaq/indices')
+      csqaqIndices.value = data
+    } catch (e) {
+      error.value = errorMessage(e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadCsqaqKline(id: number, period: CsqaqKlinePeriod) {
+    loading.value = true
+    error.value = ''
+    try {
+      const { data } = await api.get<CsqaqIndexKline>('/prices/csqaq/index-kline', { params: { id, period } })
+      csqaqKline.value = data
+    } catch (e) {
+      csqaqKline.value = null
+      error.value = errorMessage(e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return {
+    watchlist, history, index, csqaqIndices, csqaqKline, loading, error,
+    loadWatchlist, addWatch, deleteWatch, loadHistory, loadIndex, loadCsqaqIndices, loadCsqaqKline
+  }
 })

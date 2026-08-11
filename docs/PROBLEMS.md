@@ -14,6 +14,9 @@
 - [ ] **Steam 直连超时**：steamcommunity.com/market/priceoverview 在本机网络返回超时(http 000)。
       当前通过 CSQAQ 的 `steamSellPrice` 获取 Steam 价；`SteamPriceProvider` 已实现但可能不可达。
 - [ ] **CSQAQ 的 UU/BUFF 价格为整数元粒度**：如需分位精度，需额外接入平台直连（受风控限制）。
+- [ ] **本机 CSQAQ Token 的 IP 白名单需重新绑定（2026-08-11）**：指数概览接口无需 Token，已实测可用；
+      本机调用指数 K 线时官方返回 401“当前环境 IP 与账户所绑定 IP 不符”。代码和返回结构已按官方文档完成，
+      本地 K 线实时联调需在 CSQAQ 重新绑定当前出口 IP；云端需绑定云服务器出口 IP。
 
 ## 未实现功能（依赖登录态/后续规划）
 - [ ] **Steam/BUFF/UU 交易记录自动同步（M4）**：需要各平台登录态/Cookie 且抓取有账号风控。

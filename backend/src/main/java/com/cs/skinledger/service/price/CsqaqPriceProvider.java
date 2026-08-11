@@ -34,13 +34,16 @@ public class CsqaqPriceProvider implements PriceProvider {
 
     private final AppPriceProperties props;
     private final CsqaqTokenService tokenService;
+    private final CsqaqRequestGate requestGate;
     private final HttpClient http;
     private final ObjectMapper mapper;
 
-    public CsqaqPriceProvider(AppPriceProperties props, ObjectMapper mapper, CsqaqTokenService tokenService) {
+    public CsqaqPriceProvider(AppPriceProperties props, ObjectMapper mapper, CsqaqTokenService tokenService,
+                              CsqaqRequestGate requestGate) {
         this.props = props;
         this.mapper = mapper;
         this.tokenService = tokenService;
+        this.requestGate = requestGate;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(Math.max(5, props.getCsqaq().getTimeoutSeconds())))
                 .build();
@@ -80,6 +83,7 @@ public class CsqaqPriceProvider implements PriceProvider {
             boolean batchOk = false;
             for (int attempt = 1; attempt <= 3 && !batchOk; attempt++) {
                 try {
+                    requestGate.awaitTurn();
                     HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
                     JsonNode root = mapper.readTree(resp.body());
                     int code = root.path("code").asInt(-1);

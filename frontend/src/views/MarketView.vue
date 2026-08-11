@@ -2,11 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import ItemSelect from '../components/ItemSelect.vue'
 import MarketLineChart from '../components/MarketLineChart.vue'
+import MarketCandlestickChart from '../components/MarketCandlestickChart.vue'
 import { errorMessage } from '../api/client'
 import { useLotsStore } from '../stores/lots'
 import { useMarketStore, type IndexKind, type MarketPeriod } from '../stores/market'
 import { useUiStore } from '../stores/ui'
-import type { Item, WatchlistItem } from '../types'
+import type { CsqaqIndex, CsqaqKlinePeriod, Item, WatchlistItem } from '../types'
 import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 
 const lots = useLotsStore()
@@ -20,6 +21,8 @@ const selectedExterior = ref('')
 const selectedWatch = ref<WatchlistItem | null>(null)
 const adding = ref(false)
 const refreshing = ref(false)
+const selectedMarketIndex = ref<CsqaqIndex | null>(null)
+const marketPeriod = ref<CsqaqKlinePeriod>('1day')
 
 const periods: Array<{ value: MarketPeriod; label: string }> = [
   { value: '24h', label: '24小时' },
@@ -46,11 +49,26 @@ async function load() {
 
 async function switchTab(next: typeof tab.value) {
   tab.value = next
-  if (next === 'market') return
+  if (next === 'market') {
+    await market.loadCsqaqIndices()
+    selectedMarketIndex.value = market.csqaqIndices.find(item => item.nameKey === 'init') ?? market.csqaqIndices[0] ?? null
+    if (selectedMarketIndex.value) await market.loadCsqaqKline(selectedMarketIndex.value.id, marketPeriod.value)
+    return
+  }
   await market.loadIndex(indexKind.value, period.value)
   if (next === 'watchlist' && selectedWatch.value) {
     await market.loadHistory(selectedWatch.value.itemId, selectedWatch.value.exterior, period.value)
   }
+}
+
+async function selectMarketIndex(entry: CsqaqIndex) {
+  selectedMarketIndex.value = entry
+  await market.loadCsqaqKline(entry.id, marketPeriod.value)
+}
+
+async function switchMarketPeriod(next: CsqaqKlinePeriod) {
+  marketPeriod.value = next
+  if (selectedMarketIndex.value) await market.loadCsqaqKline(selectedMarketIndex.value.id, next)
 }
 
 async function switchPeriod(next: MarketPeriod) {
@@ -134,7 +152,7 @@ onMounted(load)
       <button type="button" :class="{ active: tab === 'holdings' }" @click="switchTab('holdings')">持仓</button>
       <button type="button" :class="{ active: tab === 'watchlist' }" @click="switchTab('watchlist')">自选</button>
       <button type="button" :class="{ active: tab === 'market' }" @click="switchTab('market')">
-        大盘 <span class="pending-dot">待接入</span>
+        CSQAQ 大盘
       </button>
       <div v-if="tab !== 'market'" class="periods">
         <button
@@ -261,11 +279,24 @@ onMounted(load)
       </section>
     </template>
 
-    <section v-else class="card market-placeholder">
-      <div class="placeholder-mark">MARKET</div>
-      <h2>全市场大盘数据源尚未接入</h2>
-      <p>目前没有经过验证的全市场成分池和指数接口，因此不会用少量饰品拼接或生成虚假大盘走势。</p>
-      <div class="placeholder-status"><span></span>持仓指数和自选指数可正常使用</div>
+    <section v-else class="official-market">
+      <aside class="official-index-list card">
+        <div class="section-head"><h2>CSQAQ 指数</h2><span>{{ market.csqaqIndices.length }} 个分类</span></div>
+        <button v-for="entry in market.csqaqIndices" :key="entry.id" :class="{ active: selectedMarketIndex?.id === entry.id }" @click="selectMarketIndex(entry)">
+          <span><b>{{ entry.name }}</b><small>今开 {{ entry.open?.toFixed(2) ?? '-' }}</small></span>
+          <span class="num"><b>{{ entry.marketIndex?.toFixed(2) ?? '-' }}</b><small :class="(entry.changeRate ?? 0) >= 0 ? 'up' : 'down'">{{ entry.changeRate == null ? '-' : `${entry.changeRate >= 0 ? '+' : ''}${entry.changeRate.toFixed(2)}%` }}</small></span>
+        </button>
+        <div v-if="!market.loading && market.csqaqIndices.length === 0" class="empty-state compact"><p>暂未取得指数数据。</p></div>
+      </aside>
+      <div class="official-index-content">
+        <div v-if="selectedMarketIndex" class="metrics market-metrics">
+          <div class="metric-block"><span>当前指数</span><strong class="num">{{ selectedMarketIndex.marketIndex?.toFixed(2) ?? '-' }}</strong><small>{{ selectedMarketIndex.updatedAt ? formatDateTime(selectedMarketIndex.updatedAt) : '暂无更新时间' }}</small></div>
+          <div class="metric-block"><span>今日涨跌</span><strong class="num" :class="(selectedMarketIndex.changeRate ?? 0) >= 0 ? 'up' : 'down'">{{ selectedMarketIndex.changeRate == null ? '-' : `${selectedMarketIndex.changeRate >= 0 ? '+' : ''}${selectedMarketIndex.changeRate.toFixed(2)}%` }}</strong><small>{{ selectedMarketIndex.changeValue == null ? '-' : `${selectedMarketIndex.changeValue >= 0 ? '+' : ''}${selectedMarketIndex.changeValue.toFixed(2)}` }}</small></div>
+          <div class="metric-block"><span>最高 / 最低</span><strong class="num small-value">{{ selectedMarketIndex.high?.toFixed(2) ?? '-' }} / {{ selectedMarketIndex.low?.toFixed(2) ?? '-' }}</strong><small>CSQAQ 官方口径</small></div>
+        </div>
+        <div class="market-periods" aria-label="K线周期"><button v-for="item in [{value:'1hour',label:'1小时'},{value:'4hour',label:'4小时'},{value:'1day',label:'日K'},{value:'7day',label:'周K'}]" :key="item.value" :class="{ active: marketPeriod === item.value }" @click="switchMarketPeriod(item.value as CsqaqKlinePeriod)">{{ item.label }}</button></div>
+        <MarketCandlestickChart :title="selectedMarketIndex?.name ?? 'CSQAQ 指数'" :subtitle="`官方指数 K 线 · ${marketPeriod}`" :points="market.csqaqKline?.points ?? []" :loading="market.loading" />
+      </div>
     </section>
   </div>
 </template>
@@ -277,7 +308,6 @@ onMounted(load)
 .market-tabs { display: flex; align-items: center; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
 .market-tabs > button, .periods button { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; padding: 9px 13px; border-bottom: 2px solid transparent; }
 .market-tabs > button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-.pending-dot { margin-left: 4px; padding: 2px 6px; border-radius: 999px; background: #eef0f3; color: var(--text-muted); font-size: 10px; }
 .periods { margin-left: auto; display: flex; gap: 2px; }
 .periods button { padding: 5px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; }
 .periods button.active { color: var(--accent); background: var(--accent-soft); border-color: #c7d9fb; }
@@ -306,15 +336,12 @@ onMounted(load)
 .watch-price { text-align: right; }
 .remove { color: var(--text-muted); font-size: 11px; text-align: right; }
 .remove:hover { color: var(--danger); }
-.market-placeholder { min-height: 380px; padding: 54px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.placeholder-mark { font-family: var(--font-mono); font-size: 11px; letter-spacing: .18em; color: var(--text-muted); border: 1px solid var(--border); padding: 4px 9px; }
-.market-placeholder h2 { margin: 18px 0 8px; font-size: 18px; }
-.market-placeholder p { max-width: 520px; margin: 0; color: var(--text-secondary); }
-.placeholder-status { margin-top: 22px; font-size: 12px; color: var(--success); }
-.placeholder-status span { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--success); margin-right: 6px; }
+.official-market { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; }.official-index-list { max-height: 620px; overflow: auto; }.official-index-list > .section-head { position: sticky; top: 0; z-index: 1; background: #fff; }
+.official-index-list > button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 10px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: left; cursor: pointer; }.official-index-list > button:hover { background: var(--surface-muted); }.official-index-list > button.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }.official-index-list > button span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.official-index-list > button .num { align-items: flex-end; }.official-index-list > button b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.official-index-list > button small { color: var(--text-muted); font-size: 9px; }.official-index-content { min-width: 0; }.market-metrics { margin-bottom: 10px; }.market-metrics .small-value { font-size: 16px; }.market-periods { display: flex; justify-content: flex-end; gap: 3px; margin-bottom: 8px; }.market-periods button { padding: 5px 9px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }.market-periods button.active { border-color: #c7d9fb; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 @media (max-width: 900px) {
   .add-watch { grid-template-columns: 1fr 1fr; }
   .watch-grid { grid-template-columns: 1fr; }
+  .official-market { grid-template-columns: 1fr; }.official-index-list { max-height: 300px; }
 }
 @media (max-width: 640px) {
   .page-head { flex-direction: column; }

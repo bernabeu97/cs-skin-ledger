@@ -12,9 +12,13 @@ import {
   sendNotification
 } from '@tauri-apps/plugin-notification'
 import MarketLineChart from '../components/MarketLineChart.vue'
+import MarketCandlestickChart from '../components/MarketCandlestickChart.vue'
 import { desktopApi, canPersistCredentials, getApiBase, login, me, setApiBase } from './api'
 import type {
   Item,
+  CsqaqIndex,
+  CsqaqIndexKline,
+  CsqaqKlinePeriod,
   MarketIndexView,
   PortfolioValuation,
   PriceAlert,
@@ -23,6 +27,7 @@ import type {
   WatchlistItem
 } from '../types'
 import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
+import { windowModeSize, type WindowMode } from './windowMode'
 
 type Tab = 'holdings' | 'watchlist' | 'market'
 type Period = '24h' | '7d' | '30d' | '90d'
@@ -46,10 +51,12 @@ const settings = reactive({
   quietStart: localStorage.getItem('ticker-quiet-start') || '23:00',
   quietEnd: localStorage.getItem('ticker-quiet-end') || '08:00',
   alwaysOnTop: localStorage.getItem('ticker-always-on-top') !== '0',
-  autoStart: false
+  autoStart: false,
+  overlayMode: localStorage.getItem('ticker-overlay') === '1'
 })
 
 const compact = ref(localStorage.getItem('ticker-expanded') !== '1')
+const overlay = ref(false)
 const tab = ref<Tab>('holdings')
 const period = ref<Period>('24h')
 const loading = ref(false)
@@ -67,6 +74,12 @@ const watchIndex = ref<MarketIndexView | null>(null)
 const selectedWatch = ref<WatchlistItem | null>(null)
 const itemHistory = ref<PriceHistoryView | null>(null)
 const alerts = ref<PriceAlert[]>([])
+const marketIndices = ref<CsqaqIndex[]>([])
+const selectedMarketIndex = ref<CsqaqIndex | null>(null)
+const marketKline = ref<CsqaqIndexKline | null>(null)
+const marketPeriod = ref<CsqaqKlinePeriod>('1day')
+const marketLoading = ref(false)
+const marketError = ref('')
 const searchText = ref('')
 const searchResults = ref<Item[]>([])
 const selectedItem = ref<Item | null>(null)
@@ -86,6 +99,8 @@ const topMovers = computed(() => [...watchlist.value]
   .filter(item => item.changePercent24h != null)
   .sort((a, b) => Math.abs(b.changePercent24h ?? 0) - Math.abs(a.changePercent24h ?? 0))
   .slice(0, 3))
+const overlayMovers = computed(() => topMovers.value.slice(0, 2))
+const mainMarketIndex = computed(() => marketIndices.value.find(item => item.nameKey === 'init') ?? marketIndices.value[0] ?? null)
 const connectionLabel = computed(() => stale.value ? '缓存数据' : refreshing.value ? '刷新中' : '行情在线')
 
 function cachePayload(): CachePayload {
@@ -118,18 +133,23 @@ async function loadData() {
   loading.value = true
   error.value = ''
   try {
-    const [nextValuation, nextWatchlist, nextHoldingIndex, nextWatchIndex, nextAlerts] = await Promise.all([
+    const [nextValuation, nextWatchlist, nextHoldingIndex, nextWatchIndex, nextAlerts, nextMarketIndices] = await Promise.all([
       desktopApi.get<PortfolioValuation>('/prices/valuation'),
       desktopApi.get<WatchlistItem[]>('/watchlist'),
       desktopApi.get<MarketIndexView>(`/prices/index?kind=holdings&period=${period.value}`),
       desktopApi.get<MarketIndexView>(`/prices/index?kind=watchlist&period=${period.value}`),
-      desktopApi.get<PriceAlert[]>('/alerts')
+      desktopApi.get<PriceAlert[]>('/alerts'),
+      desktopApi.get<CsqaqIndex[]>('/prices/csqaq/indices').catch(() => marketIndices.value)
     ])
     valuation.value = nextValuation
     watchlist.value = nextWatchlist
     holdingIndex.value = nextHoldingIndex
     watchIndex.value = nextWatchIndex
     alerts.value = nextAlerts
+    marketIndices.value = nextMarketIndices
+    if (!selectedMarketIndex.value && nextMarketIndices.length) {
+      selectedMarketIndex.value = nextMarketIndices.find(item => item.nameKey === 'init') ?? nextMarketIndices[0]
+    }
     if (!selectedWatch.value || !nextWatchlist.some(item => item.id === selectedWatch.value?.id)) {
       selectedWatch.value = nextWatchlist[0] ?? null
     }
@@ -178,6 +198,7 @@ async function submitLogin() {
     loginForm.password = ''
     await loadData()
     startPolling()
+    if (settings.overlayMode) await enterOverlay()
   } catch (cause) {
     loginError.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
@@ -208,6 +229,7 @@ async function tryAutoLogin() {
 }
 
 async function logout() {
+  if (overlay.value) await leaveOverlay(false)
   await invoke('delete_credentials')
   auth.authenticated = false
   auth.username = ''
@@ -219,10 +241,52 @@ function startPolling() {
   pollTimer = window.setInterval(refreshPrices, settings.refreshMinutes * 60_000)
 }
 
+async function applyWindowMode(mode: WindowMode) {
+  const tickerWindow = getCurrentWindow()
+  const size = windowModeSize(mode)
+  await tickerWindow.setDecorations(mode !== 'overlay')
+  await tickerWindow.setResizable(mode !== 'overlay')
+  await tickerWindow.setAlwaysOnTop(mode === 'overlay' || settings.alwaysOnTop)
+  await tickerWindow.setSize(new LogicalSize(size.width, size.height))
+}
+
+async function enterOverlay() {
+  overlay.value = true
+  compact.value = true
+  settings.overlayMode = true
+  showSettings.value = false
+  localStorage.setItem('ticker-overlay', '1')
+  localStorage.setItem('ticker-expanded', '0')
+  await applyWindowMode('overlay')
+}
+
+async function leaveOverlay(expand: boolean) {
+  overlay.value = false
+  compact.value = !expand
+  settings.overlayMode = false
+  localStorage.setItem('ticker-overlay', '0')
+  localStorage.setItem('ticker-expanded', compact.value ? '0' : '1')
+  await applyWindowMode(expand ? 'expanded' : 'compact')
+  if (expand) await loadData()
+}
+
+async function openOverlaySettings() {
+  await leaveOverlay(false)
+  showSettings.value = true
+}
+
+async function hideTicker() {
+  await getCurrentWindow().hide()
+}
+
 async function toggleExpanded() {
+  if (overlay.value) {
+    await leaveOverlay(true)
+    return
+  }
   compact.value = !compact.value
   localStorage.setItem('ticker-expanded', compact.value ? '0' : '1')
-  await getCurrentWindow().setSize(new LogicalSize(compact.value ? 420 : 1020, compact.value ? 620 : 760))
+  await applyWindowMode(compact.value ? 'compact' : 'expanded')
   if (!compact.value) await loadData()
 }
 
@@ -231,10 +295,14 @@ async function saveSettings() {
   localStorage.setItem('ticker-quiet-start', settings.quietStart)
   localStorage.setItem('ticker-quiet-end', settings.quietEnd)
   localStorage.setItem('ticker-always-on-top', settings.alwaysOnTop ? '1' : '0')
-  await getCurrentWindow().setAlwaysOnTop(settings.alwaysOnTop)
   if (settings.autoStart) await enable(); else await disable()
   startPolling()
-  showSettings.value = false
+  if (settings.overlayMode) await enterOverlay()
+  else {
+    if (overlay.value) await leaveOverlay(false)
+    await getCurrentWindow().setAlwaysOnTop(settings.alwaysOnTop)
+    showSettings.value = false
+  }
 }
 
 function inQuietHours() {
@@ -284,6 +352,53 @@ async function toggleExpandedIfNeeded() {
 async function changePeriod(next: Period) {
   period.value = next
   await loadData()
+}
+
+async function openMarket() {
+  tab.value = 'market'
+  await loadMarketIndices()
+}
+
+async function loadMarketIndices() {
+  marketLoading.value = true
+  marketError.value = ''
+  try {
+    marketIndices.value = await desktopApi.get<CsqaqIndex[]>('/prices/csqaq/indices')
+    if (!selectedMarketIndex.value || !marketIndices.value.some(item => item.id === selectedMarketIndex.value?.id)) {
+      selectedMarketIndex.value = marketIndices.value.find(item => item.nameKey === 'init') ?? marketIndices.value[0] ?? null
+    }
+    await loadMarketKline()
+  } catch (cause) {
+    marketError.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    marketLoading.value = false
+  }
+}
+
+async function loadMarketKline() {
+  if (!selectedMarketIndex.value) { marketKline.value = null; return }
+  marketLoading.value = true
+  marketError.value = ''
+  try {
+    marketKline.value = await desktopApi.get<CsqaqIndexKline>(
+      `/prices/csqaq/index-kline?id=${selectedMarketIndex.value.id}&period=${marketPeriod.value}`
+    )
+  } catch (cause) {
+    marketKline.value = null
+    marketError.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    marketLoading.value = false
+  }
+}
+
+async function selectMarketIndex(entry: CsqaqIndex) {
+  selectedMarketIndex.value = entry
+  await loadMarketKline()
+}
+
+async function changeMarketPeriod(next: CsqaqKlinePeriod) {
+  marketPeriod.value = next
+  await loadMarketKline()
 }
 
 async function selectWatch(entry: WatchlistItem) {
@@ -355,10 +470,16 @@ watch(() => settings.refreshMinutes, value => {
 
 onMounted(async () => {
   settings.autoStart = await isEnabled().catch(() => false)
+  await getCurrentWindow().setDecorations(true)
+  await getCurrentWindow().setResizable(true)
   await getCurrentWindow().setAlwaysOnTop(settings.alwaysOnTop)
   await setupNotifications()
   restoreCache()
   await tryAutoLogin()
+  if (auth.authenticated) {
+    if (settings.overlayMode) await enterOverlay()
+    else await applyWindowMode(compact.value ? 'compact' : 'expanded')
+  }
 })
 onBeforeUnmount(() => {
   window.clearInterval(pollTimer)
@@ -367,7 +488,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="desktop-root" :class="{ compact }">
+  <div class="desktop-root" :class="{ compact, overlay }">
     <div v-if="!auth.authenticated" class="login-shell">
       <div class="login-brand"><span>CS</span><b>饰品UU盯盘</b></div>
       <form class="login-card" @submit.prevent="submitLogin">
@@ -383,16 +504,47 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <header class="ticker-head">
+      <section v-if="overlay" class="overlay-panel">
+        <header class="overlay-head" data-tauri-drag-region @dblclick="leaveOverlay(true)">
+          <div class="overlay-brand" data-tauri-drag-region><span></span><b>CS 饰品</b><small>UU 实时盯盘</small></div>
+          <div class="overlay-connection" :class="{ stale }" :title="error || connectionLabel" aria-live="polite"><span></span>{{ connectionLabel }}</div>
+          <nav class="overlay-actions" aria-label="悬浮窗操作">
+            <button type="button" title="刷新 UU 行情" aria-label="刷新 UU 行情" :disabled="refreshing" @dblclick.stop @click="refreshPrices">{{ refreshing ? '…' : '↻' }}</button>
+            <button type="button" title="展开完整盯盘" aria-label="展开完整盯盘" @dblclick.stop @click="leaveOverlay(true)">□</button>
+            <button type="button" title="设置" aria-label="设置" @dblclick.stop @click="openOverlaySettings">⚙</button>
+            <button type="button" title="隐藏到托盘" aria-label="隐藏到托盘" @dblclick.stop @click="hideTicker">—</button>
+          </nav>
+        </header>
+
+        <div v-if="error" class="overlay-error"><span>{{ error }}</span><button type="button" @click="loadData">重试</button></div>
+        <section class="overlay-summary" @dblclick="leaveOverlay(true)">
+          <div><span>当前市值</span><strong class="num">{{ valuation ? formatMoney(valuation.marketValue) : '-' }}</strong></div>
+          <div><span>浮动盈亏</span><b class="num" :class="(valuation?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'">{{ valuation ? formatSignedMoney(valuation.unrealizedPnl) : '-' }}</b></div>
+          <div><span>大盘</span><b class="num" :class="(mainMarketIndex?.changeRate ?? 0) >= 0 ? 'up' : 'down'">{{ mainMarketIndex?.changeRate == null ? '-' : `${mainMarketIndex.changeRate >= 0 ? '+' : ''}${mainMarketIndex.changeRate.toFixed(2)}%` }}</b></div>
+        </section>
+
+        <section class="overlay-list" aria-label="关注饰品波动">
+          <button v-for="item in overlayMovers" :key="item.id" type="button" @click="leaveOverlay(true).then(() => selectWatch(item)); tab = 'watchlist'">
+            <span><b>{{ item.itemNameZh ?? item.itemName }}</b><small>{{ item.exterior ?? '无磨损' }}</small></span>
+            <span class="num"><b>{{ item.currentPrice == null ? '-' : formatMoney(item.currentPrice) }}</b><small :class="(item.changePercent24h ?? 0) >= 0 ? 'up' : 'down'">{{ item.changePercent24h == null ? '-' : `${item.changePercent24h >= 0 ? '+' : ''}${item.changePercent24h.toFixed(2)}%` }}</small></span>
+          </button>
+          <div v-if="overlayMovers.length === 0" class="overlay-empty">暂无自选波动，展开窗口后添加关注饰品。</div>
+        </section>
+
+        <footer class="overlay-footer"><span>{{ stale ? '缓存 · ' : 'UU · ' }}{{ lastUpdated ? formatDateTime(lastUpdated) : '尚未同步' }}</span><span>拖动顶部移动</span></footer>
+      </section>
+
+      <header v-if="!overlay" class="ticker-head">
         <div class="brand"><span class="brand-mark">CS</span><b>UU盯盘</b></div>
         <div class="connection" :class="{ stale }"><span></span>{{ connectionLabel }}</div>
         <div class="head-actions">
+          <button type="button" title="切换为桌面悬浮窗" @click="enterOverlay">悬浮</button>
           <button type="button" title="设置" @click="showSettings = true">设置</button>
           <button type="button" :title="compact ? '展开完整行情' : '收起小窗'" @click="toggleExpanded">{{ compact ? '展开' : '收起' }}</button>
         </div>
       </header>
 
-      <main v-if="compact" class="compact-body" @dblclick="toggleExpanded">
+      <main v-if="!overlay && compact" class="compact-body" @dblclick="toggleExpanded">
         <section class="hero-metric">
           <span>当前持仓市值</span>
           <strong class="num">{{ valuation ? formatMoney(valuation.marketValue) : '-' }}</strong>
@@ -417,10 +569,11 @@ onBeforeUnmount(() => {
         </footer>
       </main>
 
-      <main v-else class="expanded-body">
+      <main v-else-if="!overlay" class="expanded-body">
         <div class="expanded-toolbar">
-          <nav><button :class="{ active: tab === 'holdings' }" @click="tab = 'holdings'">持仓</button><button :class="{ active: tab === 'watchlist' }" @click="tab = 'watchlist'; loadItemHistory()">自选</button><button :class="{ active: tab === 'market' }" @click="tab = 'market'">大盘 <small>待接入</small></button></nav>
-          <div class="periods"><button v-for="item in periods" :key="item.value" :class="{ active: period === item.value }" @click="changePeriod(item.value)">{{ item.label }}</button></div>
+          <nav><button :class="{ active: tab === 'holdings' }" @click="tab = 'holdings'">持仓</button><button :class="{ active: tab === 'watchlist' }" @click="tab = 'watchlist'; loadItemHistory()">自选</button><button :class="{ active: tab === 'market' }" @click="openMarket">CSQAQ 大盘</button></nav>
+          <div v-if="tab !== 'market'" class="periods"><button v-for="item in periods" :key="item.value" :class="{ active: period === item.value }" @click="changePeriod(item.value)">{{ item.label }}</button></div>
+          <div v-else class="toolbar-spacer"></div>
           <button type="button" class="btn btn-primary btn-sm" :disabled="refreshing" @click="refreshPrices">{{ refreshing ? '刷新中…' : '刷新UU行情' }}</button>
         </div>
         <div v-if="error" class="desktop-error">{{ error }} <button @click="loadData">重试</button></div>
@@ -447,18 +600,60 @@ onBeforeUnmount(() => {
           </div>
         </template>
 
-        <section v-else class="desktop-market-empty"><span>MARKET INDEX</span><h2>全市场大盘数据源未接入</h2><p>不使用虚假或未经验证的数据。持仓指数与自选指数可正常使用。</p></section>
+        <section v-else class="desktop-market-layout">
+          <aside class="market-index-list">
+            <header><b>CSQAQ 指数</b><small>{{ marketIndices.length }} 个分类</small></header>
+            <button v-for="entry in marketIndices" :key="entry.id" :class="{ active: selectedMarketIndex?.id === entry.id }" @click="selectMarketIndex(entry)">
+              <span><b>{{ entry.name }}</b><small>今开 {{ entry.open == null ? '-' : entry.open.toFixed(2) }}</small></span>
+              <span class="num"><b>{{ entry.marketIndex == null ? '-' : entry.marketIndex.toFixed(2) }}</b><small :class="(entry.changeRate ?? 0) >= 0 ? 'up' : 'down'">{{ entry.changeRate == null ? '-' : `${entry.changeRate >= 0 ? '+' : ''}${entry.changeRate.toFixed(2)}%` }}</small></span>
+            </button>
+            <div v-if="!marketLoading && marketIndices.length === 0" class="market-index-empty">暂未取得指数数据</div>
+          </aside>
+          <div class="market-index-content">
+            <div v-if="marketError" class="desktop-error">{{ marketError }} <button @click="loadMarketIndices">重试</button></div>
+            <div v-if="selectedMarketIndex" class="market-detail-head">
+              <div><span>当前指数</span><strong class="num">{{ selectedMarketIndex.marketIndex?.toFixed(2) ?? '-' }}</strong><small>更新 {{ selectedMarketIndex.updatedAt ? formatDateTime(selectedMarketIndex.updatedAt) : '-' }}</small></div>
+              <div><span>今日涨跌</span><b class="num" :class="(selectedMarketIndex.changeRate ?? 0) >= 0 ? 'up' : 'down'">{{ selectedMarketIndex.changeValue == null ? '-' : `${selectedMarketIndex.changeValue >= 0 ? '+' : ''}${selectedMarketIndex.changeValue.toFixed(2)}` }} · {{ selectedMarketIndex.changeRate == null ? '-' : `${selectedMarketIndex.changeRate >= 0 ? '+' : ''}${selectedMarketIndex.changeRate.toFixed(2)}%` }}</b></div>
+              <div><span>最高 / 最低</span><b class="num">{{ selectedMarketIndex.high?.toFixed(2) ?? '-' }} / {{ selectedMarketIndex.low?.toFixed(2) ?? '-' }}</b></div>
+              <nav aria-label="K线周期"><button v-for="item in [{value:'1hour',label:'1H'},{value:'4hour',label:'4H'},{value:'1day',label:'日K'},{value:'7day',label:'周K'}]" :key="item.value" :class="{ active: marketPeriod === item.value }" @click="changeMarketPeriod(item.value as CsqaqKlinePeriod)">{{ item.label }}</button></nav>
+            </div>
+            <MarketCandlestickChart :title="selectedMarketIndex?.name ?? 'CSQAQ 指数'" :subtitle="`官方指数 K 线 · ${marketPeriod}`" :points="marketKline?.points ?? []" :loading="marketLoading" />
+          </div>
+        </section>
       </main>
 
-      <div v-if="showSettings" class="settings-mask" @click.self="showSettings = false"><section class="settings-panel"><header><div><b>盯盘设置</b><small>{{ auth.username }}</small></div><button @click="showSettings = false">×</button></header><label><span>服务地址</span><input v-model="loginForm.server" class="input" disabled /><small>修改地址后请退出并重新登录。</small></label><label><span>刷新周期</span><select v-model.number="settings.refreshMinutes" class="select"><option :value="1">1分钟</option><option :value="5">5分钟（默认）</option><option :value="10">10分钟</option><option :value="30">30分钟</option></select></label><div class="quiet-grid"><label><span>免打扰开始</span><input v-model="settings.quietStart" class="input" type="time" /></label><label><span>免打扰结束</span><input v-model="settings.quietEnd" class="input" type="time" /></label></div><label class="switch-row"><input v-model="settings.alwaysOnTop" type="checkbox" /><span>窗口始终置顶</span></label><label class="switch-row"><input v-model="settings.autoStart" type="checkbox" /><span>开机自动启动</span></label><footer><button class="btn btn-ghost" @click="logout">退出账号</button><button class="btn btn-primary" @click="saveSettings">保存设置</button></footer></section></div>
+      <div v-if="!overlay && showSettings" class="settings-mask" @click.self="showSettings = false"><section class="settings-panel"><header><div><b>盯盘设置</b><small>{{ auth.username }}</small></div><button @click="showSettings = false">×</button></header><label><span>服务地址</span><input v-model="loginForm.server" class="input" disabled /><small>修改地址后请退出并重新登录。</small></label><label><span>刷新周期</span><select v-model.number="settings.refreshMinutes" class="select"><option :value="1">1分钟</option><option :value="5">5分钟（默认）</option><option :value="10">10分钟</option><option :value="30">30分钟</option></select></label><div class="quiet-grid"><label><span>免打扰开始</span><input v-model="settings.quietStart" class="input" type="time" /></label><label><span>免打扰结束</span><input v-model="settings.quietEnd" class="input" type="time" /></label></div><label class="switch-row"><input v-model="settings.overlayMode" type="checkbox" /><span>启动后使用桌面悬浮模式</span></label><label class="switch-row"><input v-model="settings.alwaysOnTop" type="checkbox" /><span>普通窗口始终置顶</span></label><label class="switch-row"><input v-model="settings.autoStart" type="checkbox" /><span>开机自动启动</span></label><footer><button class="btn btn-ghost" @click="logout">退出账号</button><button class="btn btn-primary" @click="saveSettings">保存设置</button></footer></section></div>
     </template>
   </div>
 </template>
 
 <style scoped>
-:global(body) { overflow: hidden; background: #f4f6f9; }
+:global(html), :global(body), :global(#app) { background: transparent; }
+:global(body) { overflow: hidden; }
 .desktop-root { min-height: 100vh; color: #17181c; background: #f4f6f9; }
+.desktop-root.overlay { padding: 8px; background: transparent; }
 button { font-family: inherit; }
+.overlay-panel { height: calc(100vh - 16px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: rgba(15,17,21,.97); color: #f7f8fa; box-shadow: 0 12px 34px rgba(0,0,0,.38); }
+.overlay-head { min-height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 7px 0 10px; border-bottom: 1px solid rgba(255,255,255,.08); user-select: none; cursor: move; }
+.overlay-brand { min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.overlay-brand > span { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #3478f6; box-shadow: 0 0 0 3px rgba(52,120,246,.16); }
+.overlay-brand b { font-size: 11px; }.overlay-brand small { color: #747d8d; font-size: 9px; }
+.overlay-connection { margin-left: auto; display: flex; align-items: center; gap: 4px; color: #8f98a7; font-size: 9px; white-space: nowrap; }
+.overlay-connection > span { width: 5px; height: 5px; border-radius: 50%; background: #35b46f; }.overlay-connection.stale > span { background: #e4a11b; }
+.overlay-actions { display: flex; gap: 1px; }
+.overlay-actions button { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #aeb5c0; font-size: 12px; cursor: pointer; }
+.overlay-actions button:hover { background: rgba(255,255,255,.09); color: #fff; }.overlay-actions button:disabled { opacity: .45; cursor: wait; }
+.overlay-actions button:focus-visible, .overlay-list button:focus-visible { outline: 2px solid #5d92f1; outline-offset: -2px; }
+.overlay-error { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: rgba(210,52,70,.14); color: #ff8b98; font-size: 9px; }.overlay-error span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.overlay-error button { margin-left: auto; border: 0; background: transparent; color: #ffb5bd; font-size: 9px; cursor: pointer; }
+.overlay-summary { min-height: 65px; display: grid; grid-template-columns: 1.35fr 1fr .72fr; align-items: center; padding: 7px 10px 6px; border-bottom: 1px solid rgba(255,255,255,.08); cursor: default; }
+.overlay-summary > div { min-width: 0; }.overlay-summary > div + div { padding-left: 10px; border-left: 1px solid rgba(255,255,255,.08); }
+.overlay-summary span { display: block; margin-bottom: 5px; color: #818a99; font-size: 9px; }.overlay-summary strong { display: block; overflow: hidden; color: #fff; font-size: 17px; line-height: 1.15; text-overflow: ellipsis; }.overlay-summary b { font-size: 12px; }
+.overlay-panel .up { color: #4bd18b; }.overlay-panel .down { color: #ff5f70; }
+.overlay-list { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 3px 5px; }
+.overlay-list > button { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 7px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.overlay-list > button:hover { background: rgba(255,255,255,.055); }.overlay-list > button > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }.overlay-list > button > span:first-child { flex: 1; }.overlay-list b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.overlay-list small { color: #7e8795; font-size: 9px; }.overlay-list .num { align-items: flex-end; flex: 0 0 auto; }.overlay-list .num b { font-size: 11px; }
+.overlay-empty { margin: auto; padding: 0 18px; color: #747d8c; font-size: 9px; line-height: 1.5; text-align: center; }
+.overlay-footer { height: 23px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-top: 1px solid rgba(255,255,255,.07); color: #626b79; font-size: 8px; }
 .login-shell { min-height: 100vh; display: grid; place-items: start center; padding: 88px 24px 24px; overflow: auto; background: #111318; }
 .login-brand { position: fixed; top: 22px; left: 24px; display: flex; align-items: center; gap: 8px; color: #fff; }
 .login-brand span, .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #3972dc; color: #fff; font: 700 11px var(--font-mono); }
@@ -474,7 +669,12 @@ button { font-family: inherit; }
 .expanded-body { height: calc(100vh - 48px); padding: 14px 18px 24px; overflow: auto; }.expanded-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }.expanded-toolbar nav { display: flex; gap: 2px; }.expanded-toolbar nav button, .periods button { border: 0; background: transparent; padding: 6px 10px; color: var(--text-secondary); font-size: 11px; cursor: pointer; border-radius: 6px; }.expanded-toolbar nav button.active, .periods button.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }.expanded-toolbar nav small { color: var(--text-muted); font-size: 8px; }.periods { display: flex; margin-left: auto; }.desktop-error { margin-bottom: 10px; padding: 8px 10px; background: var(--danger-soft); color: var(--danger); border-radius: 6px; font-size: 11px; }.desktop-error button { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
 .desktop-metrics { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }.desktop-metrics > div { padding: 11px 14px; border-right: 1px solid var(--border); }.desktop-metrics > div:last-child { border-right: 0; }.desktop-metrics span { display: block; color: var(--text-muted); font-size: 9px; }.desktop-metrics b { font-size: 18px; }.desktop-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-top: 12px; }.holding-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: #fff; }.holding-row > span { display: flex; flex-direction: column; min-width: 0; }.holding-row > .num { text-align: right; }.holding-row b { font-size: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.holding-row small { color: var(--text-muted); font-size: 8px; }
 .desktop-watch-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 12px; }.watch-sidebar { min-height: 640px; border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow: hidden; }.desktop-search { display: grid; grid-template-columns: 1fr auto; gap: 5px; padding: 9px; border-bottom: 1px solid var(--border); }.search-results { max-height: 150px; overflow: auto; border-bottom: 1px solid var(--border); }.search-results button { width: 100%; padding: 7px 9px; border: 0; border-bottom: 1px solid var(--border); background: #fff; text-align: left; font-size: 9px; cursor: pointer; }.search-results button:hover { background: var(--accent-soft); }.add-selection { display: grid; grid-template-columns: 1fr auto; gap: 5px; padding: 8px; border-bottom: 1px solid var(--border); }.desktop-watch-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 85px; gap: 8px; padding: 9px 10px; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; }.desktop-watch-row.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }.desktop-watch-row span { display: flex; flex-direction: column; min-width: 0; }.desktop-watch-row > .num { text-align: right; }.desktop-watch-row b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 9px; }.desktop-watch-row small { color: var(--text-muted); font-size: 8px; }.watch-content { min-width: 0; }.alert-editor { display: grid; grid-template-columns: 120px 120px auto auto; gap: 7px; margin-top: 10px; }.alert-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }.alert-chip { display: inline-flex; gap: 5px; align-items: center; padding: 4px 7px; border-radius: 999px; background: #eef0f3; color: var(--text-secondary); font-size: 8px; }.alert-chip button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
-.desktop-market-empty { min-height: 480px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 1px solid var(--border); border-radius: 9px; background: #fff; }.desktop-market-empty > span { font: 9px var(--font-mono); letter-spacing: .16em; color: var(--text-muted); }.desktop-market-empty h2 { margin: 12px 0 5px; }.desktop-market-empty p { margin: 0; color: var(--text-secondary); font-size: 11px; }
+.toolbar-spacer { margin-left: auto; }
+.desktop-market-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; }
+.market-index-list { height: calc(100vh - 91px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.market-index-list > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 11px; border-bottom: 1px solid var(--border); background: #fff; }.market-index-list > header b { font-size: 11px; }.market-index-list > header small { color: var(--text-muted); font-size: 9px; }
+.market-index-list > button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 78px; gap: 8px; padding: 9px 10px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: left; cursor: pointer; }.market-index-list > button:hover { background: #f8fafc; }.market-index-list > button.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }.market-index-list > button span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.market-index-list > button .num { align-items: flex-end; }.market-index-list > button b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }.market-index-list > button small { color: var(--text-muted); font-size: 8px; }.market-index-empty { padding: 30px 12px; color: var(--text-muted); font-size: 10px; text-align: center; }
+.market-index-content { min-width: 0; }.market-detail-head { min-height: 74px; display: grid; grid-template-columns: 1.15fr 1fr 1fr auto; align-items: center; gap: 16px; margin-bottom: 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }.market-detail-head > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }.market-detail-head span, .market-detail-head small { color: var(--text-muted); font-size: 8px; }.market-detail-head strong { font-size: 19px; }.market-detail-head b { font-size: 10px; }.market-detail-head nav { display: flex; gap: 2px; }.market-detail-head nav button { padding: 5px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font-size: 9px; cursor: pointer; }.market-detail-head nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .settings-mask { position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end; background: rgba(17,19,24,.42); }.settings-panel { width: min(360px, 90vw); height: 100%; padding: 18px; background: #fff; box-shadow: -12px 0 36px rgba(0,0,0,.15); display: flex; flex-direction: column; gap: 14px; }.settings-panel header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border); }.settings-panel header div { display: flex; flex-direction: column; }.settings-panel header small, .settings-panel label small { color: var(--text-muted); font-size: 9px; }.settings-panel header button { border: 0; background: transparent; font-size: 20px; cursor: pointer; }.settings-panel > label, .quiet-grid label { display: flex; flex-direction: column; gap: 4px; }.settings-panel label > span { color: var(--text-secondary); font-size: 10px; font-weight: 600; }.quiet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }.settings-panel .switch-row { flex-direction: row; align-items: center; }.settings-panel footer { display: flex; justify-content: space-between; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
 .up { color: var(--success) !important; }.down { color: var(--danger) !important; }
 @media (max-width: 760px) { .desktop-list { grid-template-columns: 1fr; }.desktop-watch-layout { grid-template-columns: 1fr; }.watch-sidebar { min-height: 0; }.alert-editor { grid-template-columns: 1fr 1fr; } }

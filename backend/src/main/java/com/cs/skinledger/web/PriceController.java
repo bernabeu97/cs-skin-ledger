@@ -6,6 +6,9 @@ import com.cs.skinledger.dto.PriceConfigView;
 import com.cs.skinledger.dto.PriceRefreshResult;
 import com.cs.skinledger.dto.PriceHistoryView;
 import com.cs.skinledger.dto.MarketIndexView;
+import com.cs.skinledger.dto.CsqaqIndexKlineView;
+import com.cs.skinledger.dto.CsqaqIndexView;
+import com.cs.skinledger.service.CsqaqIndexService;
 import com.cs.skinledger.service.MarketplaceIdImportService;
 import com.cs.skinledger.service.MarketIndexService;
 import com.cs.skinledger.service.PriceService;
@@ -30,6 +33,7 @@ public class PriceController {
     private final PriceService priceService;
     private final MarketplaceIdImportService marketplaceIdImportService;
     private final MarketIndexService marketIndexService;
+    private final CsqaqIndexService csqaqIndexService;
 
     /** 行情配置状态（前端用于提示是否已配置 CSQAQ 等） */
     @GetMapping("/config")
@@ -63,6 +67,19 @@ public class PriceController {
     public MarketIndexView index(@RequestParam(defaultValue = "holdings") String kind,
                                  @RequestParam(defaultValue = "24h") String period) {
         return marketIndexService.history(kind, period);
+    }
+
+    /** CSQAQ 全市场与分类指数概览。 */
+    @GetMapping("/csqaq/indices")
+    public List<CsqaqIndexView> csqaqIndices() {
+        return csqaqIndexService.indices();
+    }
+
+    /** CSQAQ 指数 K 线；period: 1hour/4hour/1day/7day。 */
+    @GetMapping("/csqaq/index-kline")
+    public CsqaqIndexKlineView csqaqIndexKline(@RequestParam long id,
+                                               @RequestParam(defaultValue = "1day") String period) {
+        return csqaqIndexService.kline(id, period);
     }
 
     /** 导入平台商品 ID 映射（work/cs2_marketplaceids.json） */

@@ -123,8 +123,10 @@ docker compose up -d --build
 
 ## Windows 桌面盯盘
 
-- 技术栈：Tauri 2 + Vue 3；支持置顶小窗、托盘、持仓/自选指数、单品价格历史、磨损级提醒、离线缓存与 1/5/10/30 分钟刷新。
-- “大盘”页暂不展示伪造指数，待接入有明确成分与授权的数据源后启用。
+- 技术栈：Tauri 2 + Vue 3；支持 340×258 无边框桌面悬浮窗、顶部拖动、始终置顶、隐藏到托盘、持仓/自选指数、单品价格历史、磨损级提醒、离线缓存与 1/5/10/30 分钟刷新。
+- 普通窗口顶部点击“悬浮”进入桌面监控模式；悬浮窗可刷新、展开完整盯盘、打开设置或隐藏到托盘，设置中可选择下次启动后直接进入悬浮模式。
+- 网页与桌面“大盘”页接入 CSQAQ 官方分类指数：展示当前值、今日涨跌、开高低收，并支持 1小时/4小时/日/周 K 线缩放查看；后端接口为 `/api/prices/csqaq/indices` 与 `/api/prices/csqaq/index-kline`。
+- 指数概览来自无需 Token 的 `current_data`；K 线来自 `sub/kline`，必须绑定当前服务器出口 IP。所有 CSQAQ 请求共用每秒一次的限流闸门，并对指数结果做短时缓存。
 - 本地开发 API 默认 `http://localhost:8080`。公网 HTTP 仅允许手动登录且不保存密码；使用 Windows 凭据管理器记住密码需要 `localhost` 或 HTTPS。
 - 本机不安装 Rust/Windows SDK。推送 `desktop-v*` 标签或在 GitHub Actions 手动运行 `build-desktop-msi`，可获得未签名 MSI 与对应 SHA256；首次安装可能出现 Windows SmartScreen 提示。
 

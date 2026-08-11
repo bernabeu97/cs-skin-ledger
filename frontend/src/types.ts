@@ -215,6 +215,38 @@ export interface MarketIndexView {
   points: PricePoint[]
 }
 
+export interface CsqaqIndex {
+  id: number
+  name: string
+  nameKey: string
+  imageUrl: string | null
+  marketIndex: number | null
+  changeValue: number | null
+  changeRate: number | null
+  open: number | null
+  close: number | null
+  high: number | null
+  low: number | null
+  updatedAt: string | null
+}
+
+export type CsqaqKlinePeriod = '1hour' | '4hour' | '1day' | '7day'
+
+export interface CsqaqCandle {
+  at: string
+  open: number
+  close: number
+  high: number
+  low: number
+  volume: number
+}
+
+export interface CsqaqIndexKline {
+  indexId: number
+  period: CsqaqKlinePeriod
+  points: CsqaqCandle[]
+}
+
 export interface CostRequest {
   category: CostCategory
   direction: CostDirection
