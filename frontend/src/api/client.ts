@@ -18,6 +18,7 @@ export interface TradeQuery {
 
 export function errorMessage(e: unknown): string {
   if (axios.isAxiosError(e)) {
+    if (e.response?.status === 413) return '导入文件超过 64MB 上限，请缩小文件后重试'
     const data = e.response?.data as { message?: string } | undefined
     return data?.message || e.message
   }

@@ -32,7 +32,7 @@ import com.cs.skinledger.domain.User;
 @RequiredArgsConstructor
 public class UuFullJsonImportService {
 
-    private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 64L * 1024 * 1024;
     private static final ZoneId CHINA_ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Map<String, String> EXTERIORS = Map.of(
@@ -50,7 +50,7 @@ public class UuFullJsonImportService {
             throw new IllegalArgumentException("请选择悠悠有品全量记录 JSON 文件");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("JSON 文件不能超过 20MB");
+            throw new IllegalArgumentException("JSON 文件不能超过 64MB");
         }
 
         try (InputStream input = file.getInputStream()) {
@@ -62,7 +62,7 @@ public class UuFullJsonImportService {
     public UuFullJsonImportResult importFileForUser(Path path, User user) throws IOException {
         long size = Files.size(path);
         if (size <= 0 || size > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("JSON 文件为空或超过 20MB");
+            throw new IllegalArgumentException("JSON 文件为空或超过 64MB");
         }
         try (InputStream input = Files.newInputStream(path)) {
             return importStream(input, user);

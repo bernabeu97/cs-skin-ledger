@@ -3,8 +3,8 @@ spring:
     name: skin-ledger
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: 64MB
+      max-request-size: 64MB
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/cs_skin_ledger?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true}
     username: ${DB_USER:ledger}
