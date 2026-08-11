@@ -81,6 +81,7 @@ public class SecurityConfig {
 
     /** Spring Security 6 的官方 SPA 处理方式：请求头读取 Cookie 中的原始 Token，响应仍保留 BREACH 防护。 */
     private static final class SpaCsrfTokenRequestHandler implements CsrfTokenRequestHandler {
+        private static final String TOKEN_FORMAT_HEADER = "X-CSRF-TOKEN-FORMAT";
         private final CsrfTokenRequestHandler plain = new CsrfTokenRequestAttributeHandler();
         private final CsrfTokenRequestHandler xor = new XorCsrfTokenRequestAttributeHandler();
 
@@ -93,6 +94,9 @@ public class SecurityConfig {
 
         @Override
         public String resolveCsrfTokenValue(HttpServletRequest request, CsrfToken csrfToken) {
+            if ("xor".equalsIgnoreCase(request.getHeader(TOKEN_FORMAT_HEADER))) {
+                return xor.resolveCsrfTokenValue(request, csrfToken);
+            }
             return (StringUtils.hasText(request.getHeader(csrfToken.getHeaderName())) ? plain : xor)
                     .resolveCsrfTokenValue(request, csrfToken);
         }

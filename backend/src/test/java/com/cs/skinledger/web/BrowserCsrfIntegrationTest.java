@@ -1,5 +1,6 @@
 package com.cs.skinledger.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -48,6 +49,33 @@ class BrowserCsrfIntegrationTest {
                         .header("Content-Type", "application/json")
                         .header("X-XSRF-TOKEN", rawToken)
                         .PUT(HttpRequest.BodyPublishers.ofString("{\"token\":\"COOKIE1234567890\"}"))
+                        .build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, save.statusCode(), save.body());
+    }
+
+    @Test
+    void xorResponseTokenAllowsDesktopMutationWhenFormatIsExplicit() throws Exception {
+        CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
+        HttpClient client = HttpClient.newBuilder().cookieHandler(cookies).build();
+        URI base = URI.create("http://127.0.0.1:" + port);
+
+        HttpResponse<String> register = client.send(HttpRequest.newBuilder(base.resolve("/api/auth/register"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"username\":\"desktop_user\",\"password\":\"password123\"}"))
+                        .build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, register.statusCode());
+
+        HttpResponse<String> csrf = client.send(HttpRequest.newBuilder(base.resolve("/api/auth/csrf")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, csrf.statusCode());
+        String xorToken = new ObjectMapper().readTree(csrf.body()).path("token").asText();
+
+        HttpResponse<String> save = client.send(HttpRequest.newBuilder(base.resolve("/api/settings/csqaq-token"))
+                        .header("Content-Type", "application/json")
+                        .header("X-XSRF-TOKEN", xorToken)
+                        .header("X-CSRF-TOKEN-FORMAT", "xor")
+                        .PUT(HttpRequest.BodyPublishers.ofString("{\"token\":\"DESKTOP1234567890\"}"))
                         .build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, save.statusCode(), save.body());
     }

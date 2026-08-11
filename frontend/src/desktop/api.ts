@@ -50,6 +50,9 @@ async function request<T>(path: string, init: RequestInit = {}, retryCsrf = true
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) {
     headers.set('X-XSRF-TOKEN', csrfToken)
+    // /api/auth/csrf 返回的是经过 BREACH 防护的 XOR Token；桌面端无法读取浏览器 Cookie，
+    // 因此显式声明 Token 格式，让后端使用对应的安全解码器。
+    headers.set('X-CSRF-TOKEN-FORMAT', 'xor')
   }
   const response = await fetch(`${baseUrl}/api${path}`, { ...init, headers, credentials: 'include' })
   if (response.status === 403 && retryCsrf && !path.startsWith('/auth/')) {
