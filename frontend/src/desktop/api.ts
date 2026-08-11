@@ -6,7 +6,13 @@ let baseUrl = normalizeBase(localStorage.getItem('ticker-api-base') || 'http://l
 let csrfToken = ''
 
 export function normalizeBase(value: string): string {
-  return value.trim().replace(/\/+$/, '')
+  const trimmed = value.trim().replace(/\/+$/, '')
+  try {
+    const url = new URL(trimmed)
+    return ['http:', 'https:'].includes(url.protocol) ? url.origin : trimmed
+  } catch {
+    return trimmed
+  }
 }
 
 export function setApiBase(value: string) {

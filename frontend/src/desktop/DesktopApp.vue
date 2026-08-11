@@ -459,7 +459,7 @@ onBeforeUnmount(() => {
 :global(body) { overflow: hidden; background: #f4f6f9; }
 .desktop-root { min-height: 100vh; color: #17181c; background: #f4f6f9; }
 button { font-family: inherit; }
-.login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #111318; }
+.login-shell { min-height: 100vh; display: grid; place-items: start center; padding: 88px 24px 24px; overflow: auto; background: #111318; }
 .login-brand { position: fixed; top: 22px; left: 24px; display: flex; align-items: center; gap: 8px; color: #fff; }
 .login-brand span, .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #3972dc; color: #fff; font: 700 11px var(--font-mono); }
 .login-card { width: min(380px, 100%); padding: 22px; border-radius: 12px; background: #fff; display: flex; flex-direction: column; gap: 13px; box-shadow: 0 18px 60px rgba(0,0,0,.3); }
