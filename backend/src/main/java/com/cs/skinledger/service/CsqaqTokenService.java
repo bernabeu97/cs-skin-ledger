@@ -3,6 +3,8 @@ package com.cs.skinledger.service;
 import com.cs.skinledger.config.AppPriceProperties;
 import com.cs.skinledger.domain.Setting;
 import com.cs.skinledger.repository.SettingRepository;
+import com.cs.skinledger.service.price.CsqaqRequestGate;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -10,6 +12,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Optional;
 
 @Service
@@ -23,6 +31,7 @@ public class CsqaqTokenService {
     private final SecretCipher cipher;
     private final ObjectMapper objectMapper;
     private final AppPriceProperties properties;
+    private final CsqaqRequestGate requestGate;
 
     @Transactional(readOnly = true)
     public Optional<String> currentToken() {
@@ -76,6 +85,38 @@ public class CsqaqTokenService {
         return status();
     }
 
+    /** 将当前账号 Token 绑定到实际发起行情请求的后端服务器出口 IP。 */
+    public IpBindingView bindCurrentServerIp() {
+        String token = currentToken()
+                .orElseThrow(() -> new IllegalArgumentException("CSQAQ ApiToken 未绑定，请先保存 Token"));
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(
+                            properties.getCsqaq().getBaseUrl() + "/api/v1/sys/bind_local_ip"))
+                    .timeout(Duration.ofSeconds(properties.getCsqaq().getTimeoutSeconds()))
+                    .header("Accept", "application/json")
+                    .header("ApiToken", token)
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            requestGate.awaitTurn();
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            JsonNode root = objectMapper.readTree(response.body());
+            int code = root.path("code").asInt(response.statusCode());
+            if (response.statusCode() >= 400 || code != 200) {
+                throw new ExternalServiceException("CSQAQ 出口 IP 绑定失败: "
+                        + root.path("msg").asText("HTTP " + response.statusCode()));
+            }
+            return new IpBindingView(true, root.path("data").asText("当前服务器出口 IP 已绑定"));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ExternalServiceException("CSQAQ 出口 IP 绑定已取消", e);
+        } catch (ExternalServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ExternalServiceException("CSQAQ 出口 IP 绑定失败: " + e.getMessage(), e);
+        }
+    }
+
     private String decrypt(Setting setting) {
         try {
             return cipher.decrypt(objectMapper.readValue(setting.getValue(), String.class));
@@ -90,5 +131,8 @@ public class CsqaqTokenService {
     }
 
     public record TokenView(boolean configured, String maskedToken, String source) {
+    }
+
+    public record IpBindingView(boolean bound, String message) {
     }
 }

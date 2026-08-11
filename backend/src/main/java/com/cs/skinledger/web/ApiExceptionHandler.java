@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import com.cs.skinledger.service.ExternalServiceException;
 
 import java.util.Map;
 
@@ -40,6 +41,11 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> uploadTooLarge(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(Map.of("message", "导入文件超过 64MB 上限，请缩小文件后重试"));
+    }
+
+    @ExceptionHandler(ExternalServiceException.class)
+    public ResponseEntity<Map<String, String>> upstreamError(ExternalServiceException e) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("message", e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

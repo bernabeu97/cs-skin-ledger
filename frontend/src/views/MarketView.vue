@@ -124,7 +124,11 @@ async function refreshPrices() {
     for (const alert of result.triggeredAlerts ?? []) {
       ui.toast('info', `${alert.itemNameZh ?? alert.itemName}${alert.exterior ? `（${alert.exterior}）` : ''} 已达到提醒价`, 8000)
     }
-    ui.toast(result.ok > 0 ? 'success' : 'info', result.ok > 0 ? `已更新 ${result.ok} 条 UU 行情` : '本次没有获取到新行情')
+    if (result.errors.length) {
+      ui.toast('error', result.errors[0], 8000)
+    } else {
+      ui.toast(result.ok > 0 ? 'success' : 'info', result.ok > 0 ? `已更新 ${result.ok} 条 UU 行情` : '本次没有获取到新行情')
+    }
   } catch (e) {
     ui.toast('error', errorMessage(e))
   } finally {

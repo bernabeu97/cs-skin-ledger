@@ -42,6 +42,11 @@ export const useSettingsStore = defineStore('settings', () => {
     tokenStatus.value = data
   }
 
+  async function bindTokenIp(): Promise<string> {
+    const { data } = await api.post<{ bound: boolean; message: string }>('/settings/csqaq-token/bind-ip')
+    return data.message
+  }
+
   /** 某平台费率（0.005 = 0.5%），未知平台返回 0 */
   function rateFor(platform: string): number {
     if (!fees.value) return 0
@@ -51,5 +56,5 @@ export const useSettingsStore = defineStore('settings', () => {
     return 0
   }
 
-  return { fees, loading, error, tokenStatus, loadFees, saveFees, loadTokenStatus, saveToken, deleteToken, rateFor }
+  return { fees, loading, error, tokenStatus, loadFees, saveFees, loadTokenStatus, saveToken, deleteToken, bindTokenIp, rateFor }
 })

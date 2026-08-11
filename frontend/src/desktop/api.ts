@@ -25,7 +25,7 @@ export function getApiBase() {
   return baseUrl
 }
 
-export function canPersistCredentials(value = baseUrl): boolean {
+export function isSecureServer(value = baseUrl): boolean {
   try {
     const url = new URL(value)
     return url.protocol === 'https:' || ['localhost', '127.0.0.1', '::1'].includes(url.hostname)

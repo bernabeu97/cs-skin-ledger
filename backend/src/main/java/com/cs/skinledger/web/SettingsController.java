@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,6 +41,11 @@ public class SettingsController {
     @PutMapping("/csqaq-token")
     public CsqaqTokenService.TokenView saveToken(@Valid @RequestBody TokenRequest request) {
         return tokenService.save(request.token());
+    }
+
+    @PostMapping("/csqaq-token/bind-ip")
+    public CsqaqTokenService.IpBindingView bindTokenIp() {
+        return tokenService.bindCurrentServerIp();
     }
 
     @DeleteMapping("/csqaq-token")

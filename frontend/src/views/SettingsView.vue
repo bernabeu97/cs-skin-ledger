@@ -56,7 +56,26 @@ async function bindToken() {
     await settingsStore.saveToken(token.value)
     token.value = ''
     await lotsStore.loadPriceConfig()
-    ui.toast('success', 'CSQAQ Token 已安全绑定')
+    try {
+      const message = await settingsStore.bindTokenIp()
+      ui.toast('success', message || 'Token 与当前服务器出口 IP 已绑定')
+    } catch (e) {
+      tokenError.value = `Token 已保存，但服务器出口 IP 绑定失败：${errorMessage(e)}`
+    }
+  } catch (e) {
+    tokenError.value = errorMessage(e)
+  } finally {
+    tokenPending.value = false
+  }
+}
+
+async function rebindServerIp() {
+  if (tokenPending.value) return
+  tokenPending.value = true
+  tokenError.value = ''
+  try {
+    const message = await settingsStore.bindTokenIp()
+    ui.toast('success', message || '当前服务器出口 IP 已重新绑定')
   } catch (e) {
     tokenError.value = errorMessage(e)
   } finally {
@@ -129,14 +148,17 @@ async function unbindToken() {
           <code>{{ settingsStore.tokenStatus.maskedToken }}</code>
           <span class="token-source">{{ settingsStore.tokenStatus.source === 'account' ? '当前账号' : '服务器默认' }}</span>
         </div>
-        <button v-if="settingsStore.tokenStatus.source === 'account'" type="button" class="btn btn-danger" :disabled="tokenPending" @click="unbindToken">解绑</button>
+        <div class="token-actions">
+          <button type="button" class="btn" :disabled="tokenPending" @click="rebindServerIp">重新绑定服务器 IP</button>
+          <button v-if="settingsStore.tokenStatus.source === 'account'" type="button" class="btn btn-danger" :disabled="tokenPending" @click="unbindToken">解绑</button>
+        </div>
       </div>
 
       <form class="token-form" @submit.prevent="bindToken">
         <label class="field token-field">
           <span>{{ settingsStore.tokenStatus?.configured ? '替换 Token' : '绑定 Token' }}</span>
           <input v-model.trim="token" class="input token-input" type="password" autocomplete="off" minlength="8" maxlength="128" placeholder="粘贴 CSQAQ ApiToken" required />
-          <p class="field-hint">先在 CSQAQ 个人中心把当前设备的公网 IP 加入白名单，再保存 Token。</p>
+          <p class="field-hint">保存后会自动绑定实际发起行情请求的后端服务器出口 IP；CSQAQ 限制 30 秒内只能绑定一次。</p>
         </label>
         <button class="btn btn-primary bind-button" type="submit" :disabled="tokenPending || !token.trim()">
           {{ tokenPending ? '保存中…' : settingsStore.tokenStatus?.configured ? '替换 Token' : '绑定 Token' }}
@@ -162,6 +184,7 @@ async function unbindToken() {
 .status-pill.ok { color: #176b43; background: #e8f7ef; }
 .token-current { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; margin-bottom: 14px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .token-current > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.token-actions { display: flex; align-items: center; gap: 8px; }
 .token-label, .token-source { color: var(--text-muted); font-size: 11px; }
 .token-current code { color: var(--text); font-size: 13px; }
 .token-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
@@ -175,5 +198,6 @@ async function unbindToken() {
   .bind-button { width: 100%; margin-bottom: 0; }
   .token-current { align-items: flex-start; }
   .token-current > div { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .token-actions { width: 100%; align-items: stretch; flex-direction: column; }
 }
 </style>

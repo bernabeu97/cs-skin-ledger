@@ -64,7 +64,7 @@ public class CsqaqIndexService {
         CacheEntry<CsqaqIndexKlineView> cached = klineCache.get(key);
         if (cached != null && cached.valid()) return cached.value();
         String token = tokenService.currentToken()
-                .orElseThrow(() -> new IllegalStateException("CSQAQ ApiToken 未绑定，请先在设置中绑定"));
+                .orElseThrow(() -> new IllegalArgumentException("CSQAQ ApiToken 未绑定，请先在设置中绑定"));
         JsonNode root = get("/api/v1/sub/kline?id=" + id + "&type=" + period, token);
         CsqaqIndexKlineView result = new CsqaqIndexKlineView(id, period, parseKline(root));
         klineCache.put(key, new CacheEntry<>(result, Instant.now().plus(KLINE_CACHE_TTL)));
@@ -85,16 +85,16 @@ public class CsqaqIndexService {
             JsonNode root = mapper.readTree(response.body());
             int code = root.path("code").asInt(response.statusCode());
             if (response.statusCode() >= 400 || code != 200) {
-                throw new IllegalStateException("CSQAQ 指数接口失败: " + root.path("msg").asText("HTTP " + response.statusCode()));
+                throw new ExternalServiceException("CSQAQ 指数接口失败: " + root.path("msg").asText("HTTP " + response.statusCode()));
             }
             return root;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("CSQAQ 指数请求已取消", e);
-        } catch (IllegalStateException e) {
+            throw new ExternalServiceException("CSQAQ 指数请求已取消", e);
+        } catch (ExternalServiceException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("CSQAQ 指数请求失败: " + e.getMessage(), e);
+            throw new ExternalServiceException("CSQAQ 指数请求失败: " + e.getMessage(), e);
         }
     }
 

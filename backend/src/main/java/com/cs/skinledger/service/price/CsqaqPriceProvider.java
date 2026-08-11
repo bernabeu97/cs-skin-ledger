@@ -114,6 +114,9 @@ public class CsqaqPriceProvider implements PriceProvider {
             }
         }
         if (!errors.isEmpty()) {
+            if (quotes.isEmpty()) {
+                throw new IllegalStateException(String.join("；", errors));
+            }
             log.warn("CSQAQ 部分批次失败（已跳过）：{}", String.join("；", errors));
         }
         return quotes;

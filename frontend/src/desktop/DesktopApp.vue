@@ -13,7 +13,7 @@ import {
 } from '@tauri-apps/plugin-notification'
 import MarketLineChart from '../components/MarketLineChart.vue'
 import MarketCandlestickChart from '../components/MarketCandlestickChart.vue'
-import { desktopApi, canPersistCredentials, getApiBase, login, me, setApiBase } from './api'
+import { desktopApi, getApiBase, isSecureServer, login, me, setApiBase } from './api'
 import type {
   Item,
   CsqaqIndex,
@@ -93,7 +93,7 @@ const periods: Array<{ value: Period; label: string }> = [
   { value: '24h', label: '24H' }, { value: '7d', label: '7D' },
   { value: '30d', label: '30D' }, { value: '90d', label: '90D' }
 ]
-const serverIsSafe = computed(() => canPersistCredentials(loginForm.server))
+const serverIsSafe = computed(() => isSecureServer(loginForm.server))
 const currentIndex = computed(() => tab.value === 'watchlist' ? watchIndex.value : holdingIndex.value)
 const topMovers = computed(() => [...watchlist.value]
   .filter(item => item.changePercent24h != null)
@@ -172,6 +172,7 @@ async function refreshPrices() {
   try {
     const result = await desktopApi.post<PriceRefreshResult>('/prices/refresh?platforms=uu')
     await loadData()
+    if (result.errors.length) error.value = result.errors[0]
     for (const alert of result.triggeredAlerts ?? []) await notifyAlert(alert)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)
@@ -190,13 +191,19 @@ async function submitLogin() {
     const view = await login(loginForm.username.trim(), loginForm.password)
     auth.authenticated = view.authenticated
     auth.username = view.username
-    if (loginForm.remember && serverIsSafe.value) {
-      await invoke('save_credentials', { username: loginForm.username.trim(), password: loginForm.password })
-    } else {
-      await invoke('delete_credentials')
+    let credentialWarning = ''
+    try {
+      if (loginForm.remember) {
+        await invoke('save_credentials', { username: loginForm.username.trim(), password: loginForm.password })
+      } else {
+        await invoke('delete_credentials')
+      }
+    } catch {
+      credentialWarning = '登录成功，但 Windows 凭据管理器保存失败；下次启动需要重新登录。'
     }
     loginForm.password = ''
     await loadData()
+    if (credentialWarning) error.value = credentialWarning
     startPolling()
     if (settings.overlayMode) await enterOverlay()
   } catch (cause) {
@@ -217,7 +224,6 @@ async function tryAutoLogin() {
       return
     }
   } catch { /* 继续尝试安全保存的账号 */ }
-  if (!canPersistCredentials()) return
   try {
     const saved = await invoke<SavedCredentials | null>('load_credentials')
     if (!saved) return
@@ -248,6 +254,12 @@ async function applyWindowMode(mode: WindowMode) {
   await tickerWindow.setResizable(mode !== 'overlay')
   await tickerWindow.setAlwaysOnTop(mode === 'overlay' || settings.alwaysOnTop)
   await tickerWindow.setSize(new LogicalSize(size.width, size.height))
+}
+
+async function startOverlayDrag(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (target.closest('button, a, input, select')) return
+  await getCurrentWindow().startDragging()
 }
 
 async function enterOverlay() {
@@ -494,10 +506,10 @@ onBeforeUnmount(() => {
       <form class="login-card" @submit.prevent="submitLogin">
         <div><h1>连接记账服务</h1><p>登录后同步持仓、自选和 UU 行情。</p></div>
         <label><span>服务地址</span><input v-model.trim="loginForm.server" class="input" type="url" required /></label>
-        <div v-if="!serverIsSafe" class="security-warning">当前是公网 HTTP 地址：可以手动登录，但不会保存密码或自动登录。</div>
+        <div v-if="!serverIsSafe" class="security-warning">当前是公网 HTTP 地址，登录信息在网络传输中未加密。账号密码仍可保存在本机 Windows 凭据管理器，建议尽快为服务启用 HTTPS。</div>
         <label><span>账号</span><input v-model.trim="loginForm.username" class="input" autocomplete="username" required /></label>
         <label><span>密码</span><input v-model="loginForm.password" class="input" type="password" autocomplete="current-password" required /></label>
-        <label class="remember"><input v-model="loginForm.remember" type="checkbox" :disabled="!serverIsSafe" />使用 Windows 凭据管理器安全记住账号</label>
+        <label class="remember"><input v-model="loginForm.remember" type="checkbox" />使用 Windows 凭据管理器记住账号密码并自动登录</label>
         <p v-if="loginError" class="login-error">{{ loginError }}</p>
         <button type="submit" class="btn btn-primary login-button" :disabled="loginBusy">{{ loginBusy ? '连接中…' : '登录' }}</button>
       </form>
@@ -505,7 +517,7 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <section v-if="overlay" class="overlay-panel">
-        <header class="overlay-head" data-tauri-drag-region @dblclick="leaveOverlay(true)">
+        <header class="overlay-head" data-tauri-drag-region @mousedown.left="startOverlayDrag" @dblclick="leaveOverlay(true)">
           <div class="overlay-brand" data-tauri-drag-region><span></span><b>CS 饰品</b><small>UU 实时盯盘</small></div>
           <div class="overlay-connection" :class="{ stale }" :title="error || connectionLabel" aria-live="polite"><span></span>{{ connectionLabel }}</div>
           <nav class="overlay-actions" aria-label="悬浮窗操作">
