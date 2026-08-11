@@ -18,10 +18,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +42,11 @@ public class LotService {
 
     @Transactional
     public LotResponse create(LotCreateRequest req) {
+        return create(req, null);
+    }
+
+    @Transactional
+    public LotResponse create(LotCreateRequest req, String sourceRef) {
         validatePlatform(req.buyPlatform());
         User user = currentUser.get();
         Item item = resolveItem(req);
@@ -47,6 +54,19 @@ public class LotService {
         lot.setUser(user);
         lot.setItem(item);
         applyBuyFields(lot, req);
+        lot.setSourceRef(sourceRef);
+        if (req.sellPrice() != null) {
+            if (req.sellTime() == null || req.sellPlatform() == null || req.sellPlatform().isBlank()) {
+                throw new IllegalArgumentException("已出售记录必须填写出售时间和出售平台");
+            }
+            validatePlatform(req.sellPlatform());
+            lot.setSellPrice(req.sellPrice());
+            lot.setSellTime(req.sellTime());
+            lot.setSellPlatform(req.sellPlatform());
+            lot.setFee(req.fee() == null ? BigDecimal.ZERO : req.fee());
+            recomputeSell(lot);
+            lot.setStatus(LotStatus.SOLD);
+        }
         return LotResponse.from(lotRepository.save(lot));
     }
 
@@ -88,7 +108,37 @@ public class LotService {
     @Transactional
     public void delete(Long id) {
         Lot lot = ownedLot(id);
+        lot.setDeletedAt(LocalDateTime.now());
+        lotRepository.save(lot);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LotResponse> trash() {
+        return lotRepository.findByUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(currentUser.id()).stream()
+                .map(LotResponse::from).toList();
+    }
+
+    @Transactional
+    public LotResponse restore(Long id) {
+        Lot lot = lotRepository.findByIdAndUserId(id, currentUser.id())
+                .orElseThrow(() -> new IllegalArgumentException("回收站记录不存在: " + id));
+        if (lot.getDeletedAt() == null) throw new IllegalArgumentException("记录不在回收站中");
+        lot.setDeletedAt(null);
+        return LotResponse.from(lotRepository.save(lot));
+    }
+
+    @Transactional
+    public void purge(Long id) {
+        Lot lot = lotRepository.findByIdAndUserId(id, currentUser.id())
+                .orElseThrow(() -> new IllegalArgumentException("回收站记录不存在: " + id));
+        if (lot.getDeletedAt() == null) throw new IllegalArgumentException("只能彻底删除回收站中的记录");
         lotRepository.delete(lot);
+    }
+
+    @Transactional
+    @Scheduled(cron = "0 40 3 * * *")
+    public void purgeExpiredTrash() {
+        lotRepository.deleteByDeletedAtBefore(LocalDateTime.now().minusDays(30));
     }
 
     @Transactional(readOnly = true)
@@ -103,7 +153,7 @@ public class LotService {
 
     @Transactional(readOnly = true)
     public LotSummary summary() {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id());
+        List<Lot> lots = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id());
         BigDecimal totalBuyCost = BigDecimal.ZERO;
         BigDecimal holdingCost = BigDecimal.ZERO;
         BigDecimal realized = BigDecimal.ZERO;
@@ -125,7 +175,7 @@ public class LotService {
 
     @Transactional(readOnly = true)
     public List<PnlRow> realizedPnl(PnlGroupBy groupBy) {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id());
+        List<Lot> lots = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id());
         Map<String, BigDecimal> sums = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (Lot lot : lots) {
@@ -166,6 +216,7 @@ public class LotService {
         return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.equal(root.get("user").get("id"), currentUser.id()));
+            ps.add(cb.isNull(root.get("deletedAt")));
             if (f.q() != null && !f.q().isBlank()) {
                 String pattern = "%" + f.q() + "%";
                 ps.add(cb.or(
@@ -226,7 +277,7 @@ public class LotService {
     }
 
     private Lot ownedLot(Long id) {
-        return lotRepository.findByIdAndUserId(id, currentUser.id())
+        return lotRepository.findByIdAndUserIdAndDeletedAtIsNull(id, currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));
     }
 

@@ -6,11 +6,20 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 public interface LotRepository extends JpaRepository<Lot, Long>, JpaSpecificationExecutor<Lot> {
     List<Lot> findByUserIdOrderByBuyTimeAsc(Long userId);
 
+    List<Lot> findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(Long userId);
+
+    List<Lot> findByUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(Long userId);
+
     Optional<Lot> findByIdAndUserId(Long id, Long userId);
 
+    Optional<Lot> findByIdAndUserIdAndDeletedAtIsNull(Long id, Long userId);
+
     boolean existsByUserIdAndSourceRef(Long userId, String sourceRef);
+
+    long deleteByDeletedAtBefore(LocalDateTime cutoff);
 }

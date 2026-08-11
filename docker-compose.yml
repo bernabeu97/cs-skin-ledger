@@ -3,8 +3,10 @@
 #   docker compose up -d --build
 # 环境变量：
 #   MYSQL_ROOT_PASSWORD  MySQL root 密码（必填，勿用默认值）
-#   DB_PASSWORD          ledger 账号密码（默认 ledger_pass，生产请修改）
+#   DB_PASSWORD          ledger 账号密码（必填）
 #   APP_ENCRYPTION_KEY   账号 Token 加密密钥（必填，至少 16 字符且升级时必须保持不变）
+#   APP_ADMIN_USERNAME   首个管理员用户名（首次启动必填）
+#   APP_ADMIN_PASSWORD   首个管理员密码（首次启动必填，至少 12 字符）
 #   CSQAQ_TOKEN          CSQAQ ApiToken（可选，配置后才有 UU/Steam/BUFF 行情）
 services:
   mysql:
@@ -14,8 +16,12 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请设置 MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: cs_skin_ledger
       MYSQL_USER: ledger
-      MYSQL_PASSWORD: ${DB_PASSWORD:-ledger_pass}
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请设置 DB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=40
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -30,8 +36,12 @@ services:
     environment:
       DB_URL: jdbc:mysql://mysql:3306/cs_skin_ledger?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
       DB_USER: ledger
-      DB_PASSWORD: ${DB_PASSWORD:-ledger_pass}
+      DB_PASSWORD: ${DB_PASSWORD:?请设置 DB_PASSWORD}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?请设置 APP_ENCRYPTION_KEY}
+      APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:?请设置 APP_ADMIN_USERNAME}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?请设置 APP_ADMIN_PASSWORD}
+      APP_SECURE_COOKIES: ${APP_SECURE_COOKIES:-false}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=45 -Xms128m -Xmx384m -XX:+ExitOnOutOfMemoryError
       CSQAQ_TOKEN: ${CSQAQ_TOKEN:-}
     depends_on:
       mysql:

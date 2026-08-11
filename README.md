@@ -1,6 +1,8 @@
-# CS 饰品买卖统计系统
+# SkinLedger / CS 饰品账本
 
-记录 CS 饰品买入/卖出，计算已实现盈亏与持仓。前后端分离：Spring Boot 3 后端 + Vue 3 前端，数据库 MySQL 8。
+面向小团队私有实例的 CS 饰品统计账本。记录买入/卖出、持仓估值、已实现与浮动盈亏、其他收支、行情盯盘和价格提醒。前后端分离：Spring Boot 3 + Vue 3 + MySQL 8。
+
+> 当前版本：`v0.2.0`。项目采用 AGPL-3.0；公网部署者需向网络用户提供对应版本源代码。详见 [LICENSE](LICENSE)。
 
 ## 环境要求
 
@@ -24,7 +26,7 @@ $env:JAVA_HOME='D:\Java\jdk-21'
 & 'D:\Java\apache-maven\bin\mvn.cmd' -f backend\pom.xml spring-boot:run
 ```
 
-首次打开前端后注册账号；首个账号会接管升级前 `local` 用户的全部账本数据。未登录访问业务 API 会返回 401。
+本地开发需要设置 `APP_ADMIN_USERNAME` 和至少 12 位的 `APP_ADMIN_PASSWORD`。首次启动创建管理员后，由管理员生成一次性邀请码；项目不开放自由注册。管理员必须绑定 TOTP，未登录访问业务 API 返回 401。
 
 ## 启动前端
 
@@ -38,16 +40,18 @@ npm.cmd run dev
 
 ## 功能
 
-- 交易记录：新增/编辑/删除/筛选，CSV 导入，CSV/JSON/Excel 导出
+- 饰品账本：新增/编辑/筛选、标准 Excel 导入、CSV/JSON/Excel 导出、30 天回收站
 - 仪表盘：持仓总成本、已实现盈亏、持仓列表、月度盈亏图
 - 行情盯盘：持仓指数、自选指数、UU 单品历史、自选清单与磨损级提醒
 - 卖出校验：卖出数量不能超过当前持仓（含手续费成本）
-- 账号：注册、登录、退出；交易、批次、其他收支、提醒、费率与 Token 均按账号隔离
+- 账号与安全：邀请制注册、PBKDF2 密码、管理员强制 TOTP、恢复码、登录限流、CSRF、会话失效、审计日志
+- 管理：成员禁用/启用、临时密码、一次性邀请码、最近安全事件
+- 界面：SkinLedger 深浅主题、响应式桌面布局、移动端底部导航
 
 ## 说明
 
 - 当前市值、浮动盈亏、行情历史和价格提醒统一采用 UU 出售价。
-- 数据在本机 MySQL，请定期导出 CSV/JSON 备份。
+- 数据在 MySQL；云端部署必须执行加密异地备份和恢复演练。
 
 ## 饰品数据字典（CSGO-API）
 
@@ -93,22 +97,22 @@ Invoke-RestMethod -Uri 'http://localhost:8080/api/prices/import-market-ids?dir=w
 
 ## Docker 部署（多人访问版）
 
-项目根目录提供 `docker-compose.yml`（MySQL 8 + 后端 + 前端 Nginx，前端 80 端口）：
+开发构建使用 `docker-compose.yml`；云服务器推荐使用 GHCR 镜像版 `docker-compose.prod.yml`。完整步骤见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ```powershell
-# 1. 设置环境变量后启动（MYSQL_ROOT_PASSWORD 必填）
-$env:MYSQL_ROOT_PASSWORD="你的root密码"
-$env:DB_PASSWORD="ledger_pass"          # 生产请改
-$env:APP_ENCRYPTION_KEY="至少16位的随机密钥" # 必填，后续升级不可更换
-$env:CSQAQ_TOKEN="你的Token"            # 可选，配置后才有行情
-docker compose up -d --build
+cp .env.example .env
+# 编辑 .env 并替换全部 CHANGE_ME
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+./scripts/health-check.sh
 
 # 2. 访问 http://服务器IP/
 ```
 
 - 后端 API 由 Nginx 反代到 8080，前端静态文件由 Nginx 托管（SPA 路由已配置）。
-- 数据卷 `mysql_data` 持久化数据库；升级后重新 `docker compose up -d --build` 即可，Flyway 自动迁移。
+- 数据卷 `mysql_data` 持久化数据库；升级镜像后 Flyway 自动迁移。
 - 注意：CSQAQ ApiToken 绑定注册时的 IP 白名单，部署环境需各自注册/绑定。
+- 当前确认使用公网 HTTP，密码、Cookie、TOTP 和业务数据在传输途中没有 TLS 保护，不能视为完成公网安全验收；取得域名后必须切换 HTTPS。
 
 ## UU（悠悠有品）库存/交易导入
 

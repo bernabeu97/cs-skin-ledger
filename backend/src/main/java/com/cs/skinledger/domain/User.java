@@ -29,6 +29,30 @@ public class User {
     @Column(name = "password_hash")
     private String passwordHash;
 
+    @Column(nullable = false, length = 16)
+    private String role = "USER";
+
+    @Column(nullable = false)
+    private Boolean disabled = false;
+
+    @Column(name = "totp_secret", length = 512)
+    private String totpSecret;
+
+    @Column(name = "totp_enabled", nullable = false)
+    private Boolean totpEnabled = false;
+
+    @Column(name = "recovery_code_hashes", columnDefinition = "TEXT")
+    private String recoveryCodeHashes;
+
+    @Column(name = "must_change_password", nullable = false)
+    private Boolean mustChangePassword = false;
+
+    @Column(name = "session_version", nullable = false)
+    private Integer sessionVersion = 0;
+
+    @Column(name = "deletion_requested_at")
+    private LocalDateTime deletionRequestedAt;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

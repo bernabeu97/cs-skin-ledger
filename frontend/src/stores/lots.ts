@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
 import { downloadBlob } from '../utils/format'
-import type { Lot, LotCreateRequest, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
+import type { Lot, LotCreateRequest, LotImportResult, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
 
 export interface LotQuery {
   q?: string
@@ -14,6 +14,7 @@ export interface LotQuery {
 
 export const useLotsStore = defineStore('lots', () => {
   const lots = ref<Lot[]>([])
+  const trash = ref<Lot[]>([])
   const summary = ref<LotSummary | null>(null)
   const pnlRows = ref<PnlRow[]>([])
   const loading = ref(false)
@@ -73,6 +74,34 @@ export const useLotsStore = defineStore('lots', () => {
 
   async function deleteLot(id: number) {
     await api.delete(`/lots/${id}`)
+  }
+
+  async function loadTrash() {
+    const { data } = await api.get<Lot[]>('/lots/trash')
+    trash.value = data
+  }
+
+  async function restoreLot(id: number) {
+    await api.post(`/lots/${id}/restore`)
+    await Promise.all([loadTrash(), loadLots(), loadSummary()])
+  }
+
+  async function purgeLot(id: number) {
+    await api.delete(`/lots/${id}/purge`)
+    await loadTrash()
+  }
+
+  async function downloadImportTemplate() {
+    const { data } = await api.get<Blob>('/lots/import-template', { responseType: 'blob' })
+    downloadBlob(data, 'skinledger-import-template.xlsx')
+  }
+
+  async function importWorkbook(file: File): Promise<LotImportResult> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await api.post<LotImportResult>('/lots/import', body)
+    await Promise.all([loadLots(), loadSummary(), loadValuation()])
+    return data
   }
 
   // ===== 行情模块 =====
@@ -135,9 +164,10 @@ export const useLotsStore = defineStore('lots', () => {
   }
 
   return {
-    lots, summary, pnlRows, loading, loadingSummary, loadingPnl, error, dashError,
+    lots, trash, summary, pnlRows, loading, loadingSummary, loadingPnl, error, dashError,
     valuation, priceConfig, refreshingPrices, loadingValuation,
-    loadLots, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, exportLots, importUuFullJson,
+    loadLots, loadTrash, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, restoreLot, purgeLot,
+    exportLots, downloadImportTemplate, importWorkbook, importUuFullJson,
     loadValuation, loadPriceConfig, refreshPrices
   }
 })

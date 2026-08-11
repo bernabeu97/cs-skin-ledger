@@ -22,17 +22,22 @@ spring:
 
 server:
   port: 8080
+  forward-headers-strategy: framework
   servlet:
     session:
-      timeout: 7d
+      timeout: 12h
       cookie:
         http-only: true
         same-site: lax
+        secure: ${APP_SECURE_COOKIES:false}
 
 app:
   security:
     # 生产环境必须通过 APP_ENCRYPTION_KEY 设置随机密钥。
     encryption-key: ${APP_ENCRYPTION_KEY:local-development-only-change-me}
+    secure-cookies: ${APP_SECURE_COOKIES:false}
+    admin-username: ${APP_ADMIN_USERNAME:}
+    admin-password: ${APP_ADMIN_PASSWORD:}
   price:
     csqaq:
       api-token: ${CSQAQ_TOKEN:}

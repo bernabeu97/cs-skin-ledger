@@ -1,6 +1,6 @@
 [package]
 name = "cs-skin-ticker"
-version = "0.1.5"
+version = "0.2.0"
 description = "CS 饰品 UU 行情桌面盯盘"
 authors = ["Bernabeu"]
 edition = "2021"

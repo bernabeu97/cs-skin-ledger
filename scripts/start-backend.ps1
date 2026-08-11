@@ -13,6 +13,10 @@ $env:APP_ENCRYPTION_KEY = (Get-Content -LiteralPath $encryptionKeyFile -Raw).Tri
 if (Test-Path $tokenFile) {
     $env:CSQAQ_TOKEN = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
 }
-$jar = Join-Path $projectRoot 'backend\target\skin-ledger-0.1.0.jar'
+$jar = Get-ChildItem (Join-Path $projectRoot 'backend\target') -Filter 'skin-ledger-*.jar' |
+    Where-Object { $_.Name -notlike '*.original' } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+if (-not $jar) { throw '未找到后端 JAR，请先运行 Maven package' }
 Start-Process -FilePath "$env:JAVA_HOME\bin\java.exe" -ArgumentList "-jar", "`"$jar`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
 Write-Host 'backend started: http://localhost:8080 (log: work/backend.log)'

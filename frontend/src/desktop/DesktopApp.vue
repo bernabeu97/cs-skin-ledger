@@ -44,7 +44,7 @@ interface CachePayload {
 
 const auth = reactive({ authenticated: false, username: '' })
 const loginForm = reactive({
-  server: getApiBase(), username: '', password: '', remember: true
+  server: getApiBase(), username: '', password: '', totpCode: '', remember: true
 })
 const settings = reactive({
   refreshMinutes: Number(localStorage.getItem('ticker-refresh-minutes') || 5),
@@ -188,12 +188,15 @@ async function submitLogin() {
   loginError.value = ''
   try {
     setApiBase(loginForm.server)
-    const view = await login(loginForm.username.trim(), loginForm.password)
+    const view = await login(loginForm.username.trim(), loginForm.password, loginForm.totpCode)
+    if (view.mfaSetupRequired || view.passwordChangeRequired) {
+      throw new Error(view.mfaSetupRequired ? '请先在网页端完成管理员双重验证设置' : '请先在网页端修改临时密码')
+    }
     auth.authenticated = view.authenticated
-    auth.username = view.username
+    auth.username = view.username || ''
     let credentialWarning = ''
     try {
-      if (loginForm.remember) {
+      if (loginForm.remember && serverIsSafe.value && !view.totpEnabled) {
         await invoke('save_credentials', { username: loginForm.username.trim(), password: loginForm.password })
       } else {
         await invoke('delete_credentials')
@@ -202,6 +205,7 @@ async function submitLogin() {
       credentialWarning = '登录成功，但 Windows 凭据管理器保存失败；下次启动需要重新登录。'
     }
     loginForm.password = ''
+    loginForm.totpCode = ''
     await loadData()
     if (credentialWarning) error.value = credentialWarning
     startPolling()
@@ -506,10 +510,11 @@ onBeforeUnmount(() => {
       <form class="login-card" @submit.prevent="submitLogin">
         <div><h1>连接记账服务</h1><p>登录后同步持仓、自选和 UU 行情。</p></div>
         <label><span>服务地址</span><input v-model.trim="loginForm.server" class="input" type="url" required /></label>
-        <div v-if="!serverIsSafe" class="security-warning">当前是公网 HTTP 地址，登录信息在网络传输中未加密。账号密码仍可保存在本机 Windows 凭据管理器，建议尽快为服务启用 HTTPS。</div>
+        <div v-if="!serverIsSafe" class="security-warning">当前是公网 HTTP 地址，登录信息在网络传输中未加密。为降低风险，此地址不会保存账号密码；请尽快为服务启用 HTTPS。</div>
         <label><span>账号</span><input v-model.trim="loginForm.username" class="input" autocomplete="username" required /></label>
         <label><span>密码</span><input v-model="loginForm.password" class="input" type="password" autocomplete="current-password" required /></label>
-        <label class="remember"><input v-model="loginForm.remember" type="checkbox" />使用 Windows 凭据管理器记住账号密码并自动登录</label>
+        <label><span>双重验证码（已启用时填写）</span><input v-model.trim="loginForm.totpCode" class="input mono" autocomplete="one-time-code" placeholder="6 位验证码或恢复码" /></label>
+        <label class="remember"><input v-model="loginForm.remember" type="checkbox" :disabled="!serverIsSafe" />使用 Windows 凭据管理器记住未启用 TOTP 的账号</label>
         <p v-if="loginError" class="login-error">{{ loginError }}</p>
         <button type="submit" class="btn btn-primary login-button" :disabled="loginBusy">{{ loginBusy ? '连接中…' : '登录' }}</button>
       </form>

@@ -166,6 +166,14 @@ async function unbindToken() {
       </form>
       <p v-if="tokenError" class="inline-error" role="alert">{{ tokenError }}</p>
     </div>
+
+    <div class="card form-panel about-panel">
+      <div>
+        <h3>SkinLedger v0.2.0</h3>
+        <p class="page-desc">本服务使用 AGPL-3.0 开源许可证。你可以查看、下载并修改当前项目源代码。</p>
+      </div>
+      <a class="btn" href="https://github.com/bernabeu97/cs-skin-ledger" target="_blank" rel="noreferrer">查看源代码</a>
+    </div>
   </div>
 </template>
 
@@ -192,6 +200,8 @@ async function unbindToken() {
 .token-input { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .bind-button { min-width: 112px; margin-bottom: 20px; }
 .inline-error { margin: 10px 0 0; padding: 8px 10px; color: var(--danger); background: #fff1f2; border: 1px solid #fecdd3; border-radius: var(--radius-sm); font-size: 12px; }
+.about-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.about-panel .page-desc { margin-bottom: 0; }
 @media (max-width: 760px) { .form-grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) {
   .token-form { grid-template-columns: 1fr; }
@@ -199,5 +209,6 @@ async function unbindToken() {
   .token-current { align-items: flex-start; }
   .token-current > div { align-items: flex-start; flex-direction: column; gap: 3px; }
   .token-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .about-panel { align-items: stretch; flex-direction: column; }
 }
 </style>

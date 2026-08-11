@@ -1,0 +1,83 @@
+name: skinledger
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: cs_skin_ledger
+      MYSQL_USER: ledger
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请设置 DB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=30
+      - --performance-schema=OFF
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks: [app]
+    mem_limit: 320m
+    mem_reservation: 220m
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h localhost -uroot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    image: ghcr.io/bernabeu97/cs-skin-ledger-backend:${IMAGE_TAG:-v0.2.0}
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/cs_skin_ledger?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+      DB_USER: ledger
+      DB_PASSWORD: ${DB_PASSWORD:?请设置 DB_PASSWORD}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?请设置 APP_ENCRYPTION_KEY}
+      APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:?请设置 APP_ADMIN_USERNAME}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?请设置 APP_ADMIN_PASSWORD}
+      APP_SECURE_COOKIES: ${APP_SECURE_COOKIES:-false}
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx280m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
+      CSQAQ_TOKEN: ${CSQAQ_TOKEN:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [app, edge]
+    mem_limit: 448m
+    mem_reservation: 300m
+    read_only: true
+    tmpfs: [/tmp:size=64m,noexec,nosuid]
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+
+  frontend:
+    image: ghcr.io/bernabeu97/cs-skin-ledger-frontend:${IMAGE_TAG:-v0.2.0}
+    restart: unless-stopped
+    depends_on: [backend]
+    ports: ["80:80"]
+    networks: [app, edge]
+    mem_limit: 64m
+    mem_reservation: 24m
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  app:
+    internal: true
+  edge:
+
+volumes:
+  mysql_data:

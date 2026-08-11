@@ -9,6 +9,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import com.cs.skinledger.util.SpreadsheetCells;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -41,12 +42,12 @@ public class LotExportService {
         try (CSVPrinter printer = new CSVPrinter(out, CSVFormat.DEFAULT.builder().setHeader(HEADER).build())) {
             for (LotResponse l : lotService.list(null)) {
                 printer.printRecord(
-                        l.itemNameZh() == null ? l.itemName() : l.itemNameZh(),
-                        nz(l.exterior()), nz(l.floatValue()), l.quantity(),
+                        SpreadsheetCells.csv(l.itemNameZh() == null ? l.itemName() : l.itemNameZh()),
+                        SpreadsheetCells.csv(l.exterior()), nz(l.floatValue()), l.quantity(),
                         l.buyPrice(), l.buyTime(), l.buyPlatform(),
                         nz(l.sellPrice()), nz(l.actualIncome()), l.fee(),
-                        nz(l.sellTime()), nz(l.sellPlatform()), nz(l.profit()),
-                        l.status().name(), nz(l.note()));
+                        nz(l.sellTime()), SpreadsheetCells.csv(l.sellPlatform()), nz(l.profit()),
+                        l.status().name(), SpreadsheetCells.csv(l.note()));
             }
         }
         return out.toString().getBytes(StandardCharsets.UTF_8);

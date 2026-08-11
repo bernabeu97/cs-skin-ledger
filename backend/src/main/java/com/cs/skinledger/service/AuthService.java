@@ -2,6 +2,7 @@ package com.cs.skinledger.service;
 
 import com.cs.skinledger.domain.User;
 import com.cs.skinledger.repository.UserRepository;
+import com.cs.skinledger.domain.InviteCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -13,30 +14,30 @@ public class AuthService {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
+    private final InviteService inviteService;
 
     @Transactional
-    public User register(String rawUsername, String password) {
+    public User register(String rawUsername, String password, String inviteCode) {
         String username = rawUsername.trim();
-        if (users.existsByUsername(username) && !isClaimableLocal(username)) {
+        if (users.existsByUsername(username)) {
             throw new IllegalArgumentException("用户名已存在");
         }
-
-        User user;
-        User legacy = users.findByUsername("local").orElse(null);
-        if (users.countByPasswordHashIsNotNull() == 0 && legacy != null && legacy.getPasswordHash() == null) {
-            user = legacy;
-            user.setUsername(username);
-        } else {
-            user = new User();
-            user.setUsername(username);
-        }
+        InviteCode invite = inviteService.requireValid(inviteCode);
+        User user = new User();
+        user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(password));
-        return users.save(user);
+        user.setRole("USER");
+        user.setDisabled(false);
+        User saved = users.save(user);
+        inviteService.markUsed(invite, saved);
+        return saved;
     }
 
-    private boolean isClaimableLocal(String username) {
-        return "local".equals(username)
-                && users.findByUsername("local").map(user -> user.getPasswordHash() == null).orElse(false)
-                && users.countByPasswordHashIsNotNull() == 0;
+    @Transactional
+    public User changePassword(User user, String newPassword) {
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        user.setSessionVersion(user.getSessionVersion() + 1);
+        return users.save(user);
     }
 }

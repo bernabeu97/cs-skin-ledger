@@ -107,7 +107,7 @@ public class PriceService {
     /** 持仓估值：每个持有批次按平台优先级取最新价，计算市值与浮动盈亏 */
     @Transactional(readOnly = true)
     public PortfolioValuation valuation() {
-        List<Lot> lots = lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id()).stream()
+        List<Lot> lots = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id()).stream()
                 .filter(l -> l.getStatus() == LotStatus.HOLDING)
                 .toList();
         if (lots.isEmpty()) {
@@ -210,7 +210,7 @@ public class PriceService {
     /** 持有批次 -> 采集目标（按完整市场名去重） */
     private List<PriceTarget> buildTargets() {
         Map<String, PriceTarget> byName = new LinkedHashMap<>();
-        lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id()).stream()
+        lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id()).stream()
                 .filter(l -> l.getStatus() == LotStatus.HOLDING)
                 .forEach(l -> {
                     Item item = l.getItem();

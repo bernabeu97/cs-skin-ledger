@@ -7,6 +7,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.junit.jupiter.api.BeforeEach;
+import com.cs.skinledger.domain.User;
+import com.cs.skinledger.repository.UserRepository;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
@@ -21,11 +24,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@WithMockUser(username = "local")
+@WithMockUser(username = "catalog_admin", roles = "ADMIN")
 class ItemControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository users;
+
+    @BeforeEach
+    void createAdmin() {
+        if (users.findByUsername("catalog_admin").isEmpty()) {
+            User user = new User();
+            user.setUsername("catalog_admin");
+            user.setPasswordHash("unused");
+            user.setRole("ADMIN");
+            user.setTotpEnabled(true);
+            users.save(user);
+        }
+    }
 
     @Test
     void importItemsThenSearchChineseName(@TempDir Path dir) throws Exception {

@@ -12,10 +12,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+import com.cs.skinledger.service.LotWorkbookService;
 
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -53,6 +57,8 @@ class LotControllerTest {
     private com.cs.skinledger.repository.TradeRepository tradeRepository;
     @Autowired
     private com.cs.skinledger.repository.UserRepository userRepository;
+    @Autowired
+    private LotWorkbookService workbookService;
 
     @BeforeEach
     void cleanDatabase() {
@@ -167,5 +173,42 @@ class LotControllerTest {
                 .andExpect(jsonPath("$.status").value("SOLD"))
                 .andExpect(jsonPath("$.actualIncome").value(118.0))
                 .andExpect(jsonPath("$.profit").value(18.0));
+    }
+
+    @Test
+    void deleteMovesLotToTrashAndRestoreReturnsItToSummary() throws Exception {
+        String created = mockMvc.perform(post("/api/lots").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Recycle Knife", "100", "2026-01-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(created).get("id").asLong();
+
+        mockMvc.perform(delete("/api/lots/" + id).with(csrf())).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/lots")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/api/lots/summary")).andExpect(jsonPath("$.lotCount").value(0));
+        mockMvc.perform(get("/api/lots/trash"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(id))
+                .andExpect(jsonPath("$[0].deletedAt").isNotEmpty());
+
+        mockMvc.perform(post("/api/lots/" + id + "/restore").with(csrf())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/lots/summary")).andExpect(jsonPath("$.lotCount").value(1));
+    }
+
+    @Test
+    void standardWorkbookImportsOnceAndSkipsExactDuplicate() throws Exception {
+        byte[] template = workbookService.template();
+        MockMultipartFile file = new MockMultipartFile("file", "lots.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", template);
+
+        mockMvc.perform(multipart("/api/lots/import").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(1))
+                .andExpect(jsonPath("$.skipped").value(0))
+                .andExpect(jsonPath("$.failed").value(0));
+        mockMvc.perform(multipart("/api/lots/import").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(0))
+                .andExpect(jsonPath("$.skipped").value(1));
     }
 }

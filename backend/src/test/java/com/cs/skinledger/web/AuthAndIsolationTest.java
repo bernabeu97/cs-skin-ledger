@@ -4,6 +4,7 @@ import com.cs.skinledger.domain.Item;
 import com.cs.skinledger.domain.Lot;
 import com.cs.skinledger.domain.User;
 import com.cs.skinledger.repository.AlertRepository;
+import com.cs.skinledger.repository.AuditLogRepository;
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
 import com.cs.skinledger.repository.OtherCostRepository;
@@ -11,8 +12,12 @@ import com.cs.skinledger.repository.PriceSnapshotRepository;
 import com.cs.skinledger.repository.SettingRepository;
 import com.cs.skinledger.repository.TradeRepository;
 import com.cs.skinledger.repository.UserRepository;
+import com.cs.skinledger.domain.InviteCode;
+import com.cs.skinledger.repository.InviteCodeRepository;
+import com.cs.skinledger.util.SecurityTokens;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -60,9 +65,14 @@ class AuthAndIsolationTest {
     @Autowired private AlertRepository alertRepository;
     @Autowired private OtherCostRepository otherCostRepository;
     @Autowired private TradeRepository tradeRepository;
+    @Autowired private InviteCodeRepository inviteCodeRepository;
+    @Autowired private AuditLogRepository auditLogRepository;
 
     @BeforeEach
+    @AfterEach
     void cleanDatabase() {
+        auditLogRepository.deleteAll();
+        inviteCodeRepository.deleteAll();
         settingRepository.deleteAll();
         snapshotRepository.deleteAll();
         alertRepository.deleteAll();
@@ -74,28 +84,32 @@ class AuthAndIsolationTest {
     }
 
     @Test
-    void firstRegistrationClaimsLegacyDataAndCreatesSession() throws Exception {
+    void invitedRegistrationDoesNotClaimLegacyDataAndCreatesSession() throws Exception {
         User legacy = saveUser("local", null);
         Item item = saveItem("Legacy Knife");
         saveLot(legacy, item, "100");
+        User admin = saveUser("admin", passwordEncoder.encode("admin-password-123"));
+        admin.setRole("ADMIN");
+        admin.setTotpEnabled(true);
+        userRepository.save(admin);
+        createInvite(admin, "INVITE-ALICE");
 
         MvcResult registered = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(credentials("alice", "password123")))
+                        .content(credentials("alice", "password1234", "INVITE-ALICE")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authenticated").value(true))
                 .andExpect(jsonPath("$.username").value("alice"))
                 .andReturn();
 
         User alice = userRepository.findByUsername("alice").orElseThrow();
-        assertEquals(legacy.getId(), alice.getId());
-        assertTrue(passwordEncoder.matches("password123", alice.getPasswordHash()));
+        assertNotEquals(legacy.getId(), alice.getId());
+        assertTrue(passwordEncoder.matches("password1234", alice.getPasswordHash()));
 
         MockHttpSession session = (MockHttpSession) registered.getRequest().getSession(false);
         mockMvc.perform(get("/api/lots").session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].itemName").value("Legacy Knife"));
+                .andExpect(jsonPath("$.length()").value(0));
 
         mockMvc.perform(post("/api/auth/logout").session(session).with(csrf()))
                 .andExpect(status().isOk());
@@ -163,8 +177,39 @@ class AuthAndIsolationTest {
                 .andExpect(jsonPath("$.configured").value(false));
     }
 
-    private String credentials(String username, String password) throws Exception {
-        return objectMapper.writeValueAsString(Map.of("username", username, "password", password));
+    @Test
+    void registrationRequiresUnusedInvite() throws Exception {
+        saveUser("local", null);
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("alice", "password1234", "MISSING")))
+                .andExpect(status().isBadRequest());
+
+        User admin = saveUser("admin", passwordEncoder.encode("admin-password-123"));
+        admin.setRole("ADMIN");
+        admin.setTotpEnabled(true);
+        userRepository.save(admin);
+        createInvite(admin, "ONCE-ONLY");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("alice", "password1234", "ONCE-ONLY")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("bob", "password1234", "ONCE-ONLY")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void ordinaryUserCannotOpenAdminApi() throws Exception {
+        saveUser("alice", passwordEncoder.encode("password1234"));
+        mockMvc.perform(get("/api/admin/users").with(user("alice").roles("USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    private String credentials(String username, String password, String inviteCode) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "username", username, "password", password, "inviteCode", inviteCode));
     }
 
     private User saveUser(String username, String passwordHash) {
@@ -190,5 +235,13 @@ class AuthAndIsolationTest {
         lot.setBuyTime(LocalDateTime.of(2026, 1, 1, 10, 0));
         lot.setBuyPlatform("uu");
         return lotRepository.save(lot);
+    }
+
+    private void createInvite(User admin, String code) {
+        InviteCode invite = new InviteCode();
+        invite.setCodeHash(SecurityTokens.sha256(code.replace("-", "")));
+        invite.setCreatedBy(admin);
+        invite.setExpiresAt(LocalDateTime.now().plusDays(1));
+        inviteCodeRepository.save(invite);
     }
 }

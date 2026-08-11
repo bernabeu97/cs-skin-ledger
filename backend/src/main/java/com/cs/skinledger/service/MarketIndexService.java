@@ -113,7 +113,7 @@ public class MarketIndexService {
 
     private List<Component> holdingComponents() {
         Map<String, Component> grouped = new LinkedHashMap<>();
-        lotRepository.findByUserIdOrderByBuyTimeAsc(currentUser.id()).stream()
+        lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id()).stream()
                 .filter(lot -> lot.getStatus() == LotStatus.HOLDING)
                 .forEach(lot -> {
                     String key = key(lot.getItem().getId(), lot.getExterior());

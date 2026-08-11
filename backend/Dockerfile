@@ -8,7 +8,7 @@ RUN mvn -q -B package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/target/skin-ledger-0.1.0.jar app.jar
+COPY --from=build /app/target/skin-ledger-*.jar app.jar
 # 数据源通过环境变量注入（见 docker-compose.yml）
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

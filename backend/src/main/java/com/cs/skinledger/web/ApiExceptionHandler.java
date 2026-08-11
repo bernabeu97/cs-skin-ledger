@@ -9,6 +9,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import com.cs.skinledger.service.ExternalServiceException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -46,6 +47,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ExternalServiceException.class)
     public ResponseEntity<Map<String, String>> upstreamError(ExternalServiceException e) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("message", e.getMessage()));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> responseStatus(ResponseStatusException e) {
+        String message = e.getReason() == null ? "请求失败" : e.getReason();
+        return ResponseEntity.status(e.getStatusCode()).body(Map.of("message", message));
     }
 
     @ExceptionHandler(Exception.class)

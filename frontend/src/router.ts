@@ -5,17 +5,21 @@ import OtherCostsView from './views/OtherCostsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import MarketView from './views/MarketView.vue'
 import LoginView from './views/LoginView.vue'
+import SecurityView from './views/SecurityView.vue'
+import AdminView from './views/AdminView.vue'
 import { useAuthStore } from './stores/auth'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
+    { path: '/security', name: 'security', component: SecurityView },
     { path: '/', name: 'dashboard', component: DashboardView },
     { path: '/trades', name: 'trades', component: TradesView },
     { path: '/costs', name: 'costs', component: OtherCostsView },
     { path: '/market', name: 'market', component: MarketView },
-    { path: '/settings', name: 'settings', component: SettingsView }
+    { path: '/settings', name: 'settings', component: SettingsView },
+    { path: '/admin', name: 'admin', component: AdminView, meta: { admin: true } }
   ]
 })
 
@@ -28,5 +32,9 @@ router.beforeEach(async (to) => {
   if (!auth.authenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
+  if ((auth.mfaSetupRequired || auth.passwordChangeRequired) && to.name !== 'security') {
+    return { name: 'security' }
+  }
+  if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
   return true
 })

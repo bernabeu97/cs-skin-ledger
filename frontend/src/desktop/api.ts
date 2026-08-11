@@ -67,17 +67,25 @@ export async function loadCsrf() {
   csrfToken = data.token
 }
 
-export async function login(username: string, password: string) {
-  const view = await request<{ authenticated: boolean; username: string }>('/auth/login', {
+interface AuthView {
+  authenticated: boolean
+  username: string | null
+  totpEnabled: boolean
+  mfaSetupRequired: boolean
+  passwordChangeRequired: boolean
+}
+
+export async function login(username: string, password: string, totpCode?: string) {
+  const view = await request<AuthView>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password, totpCode: totpCode?.trim() || null })
   }, false)
   await loadCsrf()
   return view
 }
 
 export async function me() {
-  const view = await request<{ authenticated: boolean; username: string | null }>('/auth/me')
+  const view = await request<AuthView>('/auth/me')
   if (view.authenticated) await loadCsrf()
   return view
 }

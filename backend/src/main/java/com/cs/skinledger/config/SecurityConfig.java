@@ -12,7 +12,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -23,13 +29,22 @@ import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 public class SecurityConfig {
 
     @Bean
     PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
+        Map<String, PasswordEncoder> encoders = new HashMap<>();
+        encoders.put("bcrypt", bcrypt);
+        encoders.put("pbkdf2", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8());
+        DelegatingPasswordEncoder encoder = new DelegatingPasswordEncoder("pbkdf2", encoders);
+        // 兼容项目早期未带 {bcrypt} 前缀的密码哈希。
+        encoder.setDefaultPasswordEncoderForMatches(bcrypt);
+        return encoder;
     }
 
     @Bean
@@ -39,7 +54,8 @@ public class SecurityConfig {
                 .map(user -> org.springframework.security.core.userdetails.User
                         .withUsername(user.getUsername())
                         .password(user.getPasswordHash())
-                        .roles("USER")
+                        .roles(user.getRole())
+                        .disabled(Boolean.TRUE.equals(user.getDisabled()))
                         .build())
                 .orElseThrow(() -> new UsernameNotFoundException("账号或密码错误"));
     }
@@ -52,17 +68,35 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SessionRegistry sessionRegistry() {
+        return new SessionRegistryImpl();
+    }
+
+    @Bean
+    HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http, AccountGuardFilter accountGuard,
+                                            SessionRegistry sessionRegistry,
+                                            @org.springframework.beans.factory.annotation.Value("${app.security.secure-cookies:false}")
+                                            boolean secureCookies) throws Exception {
         CookieCsrfTokenRepository csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
+        csrf.setCookieCustomizer(cookie -> cookie.secure(secureCookies).sameSite("Lax"));
         return http
                 .csrf(config -> config
                         .csrfTokenRepository(csrf)
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers("/api/auth/login", "/api/auth/register"))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/error").permitAll()
+                        .requestMatchers("/api/auth/**", "/api/health", "/error").permitAll()
+                        .requestMatchers("/api/admin/**", "/api/items/import", "/api/prices/import-market-ids")
+                        .hasRole("ADMIN")
                         .anyRequest().authenticated())
+                .sessionManagement(session -> session.maximumSessions(5).sessionRegistry(sessionRegistry))
+                .addFilterAfter(accountGuard, AnonymousAuthenticationFilter.class)
                 .formLogin(config -> config.disable())
                 .httpBasic(config -> config.disable())
                 .logout(config -> config.disable())

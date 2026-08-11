@@ -25,7 +25,8 @@ public record LotResponse(
         BigDecimal actualIncome,
         BigDecimal profit,
         LotStatus status,
-        String note) {
+        String note,
+        LocalDateTime deletedAt) {
 
     public static LotResponse from(Lot lot) {
         Item item = lot.getItem();
@@ -47,6 +48,7 @@ public record LotResponse(
                 lot.getActualIncome(),
                 lot.getProfit(),
                 lot.getStatus(),
-                lot.getNote());
+                lot.getNote(),
+                lot.getDeletedAt());
     }
 }

@@ -1,6 +1,7 @@
 package com.cs.skinledger.service;
 
 import com.cs.skinledger.dto.CostResponse;
+import com.cs.skinledger.util.SpreadsheetCells;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVFormat;
@@ -53,9 +54,9 @@ public class CostExportService {
                 printer.printRecord(
                         CATEGORY_ZH.getOrDefault(c.category(), c.category()),
                         "income".equals(c.direction()) ? "收入" : "支出",
-                        c.amount(), c.occurredAt(), nz(c.platform()),
-                        c.itemNameZh() == null ? nz(c.itemName()) : c.itemNameZh(),
-                        nz(c.note()));
+                        c.amount(), c.occurredAt(), SpreadsheetCells.csv(c.platform()),
+                        SpreadsheetCells.csv(c.itemNameZh() == null ? c.itemName() : c.itemNameZh()),
+                        SpreadsheetCells.csv(c.note()));
             }
         }
         return out.toString().getBytes(StandardCharsets.UTF_8);

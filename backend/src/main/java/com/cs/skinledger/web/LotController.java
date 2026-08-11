@@ -10,6 +10,7 @@ import com.cs.skinledger.dto.PnlGroupBy;
 import com.cs.skinledger.dto.PnlRow;
 import com.cs.skinledger.service.LotExportService;
 import com.cs.skinledger.service.LotService;
+import com.cs.skinledger.service.LotWorkbookService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -37,6 +39,7 @@ public class LotController {
 
     private final LotService lotService;
     private final LotExportService lotExportService;
+    private final LotWorkbookService lotWorkbookService;
 
     @GetMapping
     public List<LotResponse> list(
@@ -77,6 +80,22 @@ public class LotController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/trash")
+    public List<LotResponse> trash() {
+        return lotService.trash();
+    }
+
+    @PostMapping("/{id}/restore")
+    public LotResponse restore(@PathVariable Long id) {
+        return lotService.restore(id);
+    }
+
+    @DeleteMapping("/{id}/purge")
+    public ResponseEntity<Void> purge(@PathVariable Long id) {
+        lotService.purge(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/summary")
     public LotSummary summary() {
         return lotService.summary();
@@ -97,5 +116,18 @@ public class LotController {
                         ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                         : "json".equals(format) ? MediaType.APPLICATION_JSON : MediaType.parseMediaType("text/csv"))
                 .body(body);
+    }
+
+    @GetMapping("/import-template")
+    public ResponseEntity<byte[]> importTemplate() throws IOException {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=skinledger-import-template.xlsx")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(lotWorkbookService.template());
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public LotWorkbookService.ImportResult importWorkbook(@RequestParam("file") MultipartFile file) throws IOException {
+        return lotWorkbookService.importWorkbook(file);
     }
 }

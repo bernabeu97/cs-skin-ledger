@@ -32,6 +32,14 @@ export interface Lot {
   profit: number | null
   status: LotStatus
   note: string | null
+  deletedAt: string | null
+}
+
+export interface LotImportResult {
+  created: number
+  skipped: number
+  failed: number
+  errors: string[]
 }
 
 export interface LotCreateRequest {

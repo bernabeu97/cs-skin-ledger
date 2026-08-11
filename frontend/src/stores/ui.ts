@@ -11,7 +11,11 @@ export interface ToastItem {
 
 export const useUiStore = defineStore('ui', () => {
   const toasts = ref<ToastItem[]>([])
+  const savedTheme = localStorage.getItem('skinledger-theme')
+  const theme = ref<'light' | 'dark'>(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
   let nextId = 1
+
+  document.documentElement.dataset.theme = theme.value
 
   function toast(type: ToastType, message: string, duration = 3500) {
     const id = nextId++
@@ -23,5 +27,11 @@ export const useUiStore = defineStore('ui', () => {
     toasts.value = toasts.value.filter(t => t.id !== id)
   }
 
-  return { toasts, toast, dismiss }
+  function toggleTheme() {
+    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = theme.value
+    localStorage.setItem('skinledger-theme', theme.value)
+  }
+
+  return { toasts, theme, toast, dismiss, toggleTheme }
 })

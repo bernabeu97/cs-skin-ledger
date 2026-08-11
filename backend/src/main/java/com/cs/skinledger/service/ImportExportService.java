@@ -5,6 +5,7 @@ import com.cs.skinledger.domain.TradeStatus;
 import com.cs.skinledger.dto.ImportResult;
 import com.cs.skinledger.dto.TradeCreateRequest;
 import com.cs.skinledger.dto.TradeResponse;
+import com.cs.skinledger.util.SpreadsheetCells;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVFormat;
@@ -89,9 +90,9 @@ public class ImportExportService {
         StringWriter out = new StringWriter();
         try (CSVPrinter printer = new CSVPrinter(out, CSVFormat.DEFAULT.builder().setHeader(HEADER).build())) {
             for (TradeResponse t : tradeService.list(null)) {
-                printer.printRecord(t.itemName(), t.platform(), t.direction(), t.quantity(),
+                printer.printRecord(SpreadsheetCells.csv(t.itemName()), SpreadsheetCells.csv(t.platform()), t.direction(), t.quantity(),
                         t.unitPrice(), t.fee(), t.feeRate(), t.currency(), t.tradedAt(),
-                        t.externalTradeId(), t.status(), t.note());
+                        SpreadsheetCells.csv(t.externalTradeId()), t.status(), SpreadsheetCells.csv(t.note()));
             }
         }
         return out.toString().getBytes(StandardCharsets.UTF_8);

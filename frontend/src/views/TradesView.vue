@@ -11,7 +11,7 @@ import { errorMessage } from '../api/client'
 import { useLotsStore } from '../stores/lots'
 import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
-import { downloadBlob, formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
+import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 import { useColumnVisibility } from '../utils/columnVisibility'
 import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert } from '../types'
 
@@ -50,7 +50,7 @@ const pendingOnly = ref(false)
 const highlightId = ref<number | null>(null)
 const route = useRoute()
 const alertsStore = useAlertsStore()
-const tab = ref<'lots' | 'alerts'>('lots')
+const tab = ref<'lots' | 'alerts' | 'trash'>('lots')
 const alertItem = ref<Item | null>(null)
 const alertExterior = ref('')
 const alertPlatform = ref('uu')
@@ -59,6 +59,8 @@ const alertThreshold = ref<number | null>(null)
 const alertBusy = ref(false)
 const deleteAlertTarget = ref<PriceAlert | null>(null)
 const uuFileEl = ref<HTMLInputElement | null>(null)
+const workbookFileEl = ref<HTMLInputElement | null>(null)
+const importingWorkbook = ref(false)
 const importingUu = ref(false)
 const showUuGuide = ref(false)
 const { visibleColumns: lotVisibleColumns } = useColumnVisibility('columns:lots', LOT_COLUMNS)
@@ -198,9 +200,53 @@ async function onExport(format: 'csv' | 'json' | 'xlsx') {
   }
 }
 
-function downloadTemplate() {
-  const header = '饰品,磨损,磨损值,数量,买入价,买入时间,买入平台,出售价,实际收入,手续费,出售时间,出售平台,盈亏,状态,备注'
-  downloadBlob(new Blob(['\uFEFF' + header + '\n'], { type: 'text/csv' }), 'lots_template.csv')
+async function downloadTemplate() {
+  try {
+    await store.downloadImportTemplate()
+  } catch (e) {
+    ui.toast('error', errorMessage(e))
+  }
+}
+
+async function selectTab(next: 'lots' | 'alerts' | 'trash') {
+  tab.value = next
+  if (next === 'trash') await store.loadTrash()
+}
+
+async function onWorkbookSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    ui.toast('error', '请选择标准模板的 .xlsx 文件')
+    return
+  }
+  importingWorkbook.value = true
+  try {
+    const result = await store.importWorkbook(file)
+    ui.toast(result.failed ? 'info' : 'success', `Excel 导入完成：新增 ${result.created} 条，重复跳过 ${result.skipped} 条，失败 ${result.failed} 条`, 6500)
+    if (result.errors.length) ui.toast('error', result.errors.slice(0, 3).join('；'), 8000)
+  } catch (e) {
+    ui.toast('error', errorMessage(e), 7000)
+  } finally {
+    importingWorkbook.value = false
+  }
+}
+
+async function restore(lot: Lot) {
+  try {
+    await store.restoreLot(lot.id)
+    ui.toast('success', '记录已恢复')
+  } catch (e) { ui.toast('error', errorMessage(e)) }
+}
+
+async function purge(lot: Lot) {
+  if (!window.confirm(`彻底删除“${lot.itemNameZh ?? lot.itemName}”？此操作不可恢复。`)) return
+  try {
+    await store.purgeLot(lot.id)
+    ui.toast('success', '记录已彻底删除')
+  } catch (e) { ui.toast('error', errorMessage(e)) }
 }
 
 function requestUuImport(forceGuide = false) {
@@ -324,8 +370,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 <template>
   <div>
     <div class="page-tabs">
-      <button type="button" class="tab-btn" :class="{ active: tab === 'lots' }" @click="tab = 'lots'">饰品账本</button>
-      <button type="button" class="tab-btn" :class="{ active: tab === 'alerts' }" @click="tab = 'alerts'">价格提醒</button>
+      <button type="button" class="tab-btn" :class="{ active: tab === 'lots' }" @click="selectTab('lots')">饰品账本</button>
+      <button type="button" class="tab-btn" :class="{ active: tab === 'alerts' }" @click="selectTab('alerts')">价格提醒</button>
+      <button type="button" class="tab-btn" :class="{ active: tab === 'trash' }" @click="selectTab('trash')">回收站</button>
     </div>
     <div v-show="tab === 'lots'">
     <h1>
@@ -394,7 +441,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       <div class="spacer"></div>
 
       <ColumnPicker v-model="lotVisibleColumns" :columns="LOT_COLUMNS" />
-      <button type="button" class="btn btn-ghost btn-sm" title="下载导入模板" @click="downloadTemplate">模板</button>
+      <button type="button" class="btn btn-ghost btn-sm" title="下载标准 Excel 导入模板" @click="downloadTemplate">Excel 模板</button>
+      <input ref="workbookFileEl" class="visually-hidden" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" @change="onWorkbookSelected" />
+      <button type="button" class="btn btn-ghost btn-sm" :disabled="importingWorkbook" @click="workbookFileEl?.click()">{{ importingWorkbook ? '导入中…' : '导入 Excel' }}</button>
       <input ref="uuFileEl" class="visually-hidden" type="file" accept="application/json,.json" @change="onUuJsonSelected" />
       <button
         type="button"
@@ -448,12 +497,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
     <ConfirmDialog
       v-if="confirmTarget"
       title="删除记录"
-      :message="`确认删除「${confirmTarget.itemNameZh ?? confirmTarget.itemName}」这条买入记录？删除后不可恢复。`"
+      :message="`将「${confirmTarget.itemNameZh ?? confirmTarget.itemName}」移入回收站？30 天内可恢复。`"
       confirm-text="删除"
       danger
       @confirm="onConfirmDelete"
       @cancel="confirmTarget = null"
     />
+    </div>
+
+    <div v-show="tab === 'trash'">
+      <div class="section-title-row"><div><h1>回收站</h1><p class="trash-desc">删除的记录保留 30 天，期间不会计入持仓、盈亏或行情估值。</p></div><span class="badge badge-muted">{{ store.trash.length }} 条</span></div>
+      <div v-if="store.trash.length" class="table-wrap"><table class="data"><thead><tr><th>饰品</th><th>买入时间</th><th>买入价</th><th>原状态</th><th>删除时间</th><th>操作</th></tr></thead><tbody>
+        <tr v-for="lot in store.trash" :key="lot.id"><td><strong>{{ lot.itemNameZh ?? lot.itemName }}</strong><small v-if="lot.exterior"> · {{ lot.exterior }}</small></td><td>{{ formatDateTime(lot.buyTime) }}</td><td class="num">{{ formatMoney(lot.buyPrice) }}</td><td><span class="badge badge-muted">{{ lot.status === 'SOLD' ? '已卖出' : '持仓中' }}</span></td><td>{{ formatDateTime(lot.deletedAt!) }}</td><td class="row-actions"><button class="btn btn-sm" type="button" @click="restore(lot)">恢复</button><button class="btn btn-ghost btn-sm danger-text" type="button" @click="purge(lot)">彻底删除</button></td></tr>
+      </tbody></table></div>
+      <div v-else class="empty-state"><p>回收站为空。</p></div>
     </div>
 
     <div v-show="tab === 'alerts'">
@@ -596,6 +653,7 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .alert-bar .item-select { flex: 1; min-width: 220px; }
 .danger-text { color: var(--danger) !important; }
 .empty-state.compact { padding: 12px; }
+.trash-desc { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; }
 .uu-guide { max-width: 650px; padding: 0; overflow: hidden; }
 .guide-head { display: flex; justify-content: space-between; gap: 16px; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
 .guide-head h2 { margin: 3px 0 0; font-size: 18px; }
