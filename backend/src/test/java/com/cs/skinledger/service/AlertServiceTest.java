@@ -19,6 +19,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -44,19 +45,19 @@ class AlertServiceTest {
     @BeforeEach
     void setUp() {
         alertRepository.deleteAll();
-        itemRepository.deleteAll();
-        userRepository.deleteAll();
-        User user = new User();
-        user.setUsername("local");
-        userRepository.save(user);
+        userRepository.findByUsername("local").orElseGet(() -> {
+            User user = new User();
+            user.setUsername("local");
+            return userRepository.save(user);
+        });
         item = new Item();
-        item.setMarketHashName("AK-47 | Alert Test (Field-Tested)");
+        item.setMarketHashName("AK-47 | Alert Test " + UUID.randomUUID() + " (Field-Tested)");
         item.setSource("manual");
         item = itemRepository.save(item);
     }
 
     private PriceQuote quote(String price) {
-        return new PriceQuote(item.getId(), "AK-47 | Alert Test (Field-Tested)", null, "uu",
+        return new PriceQuote(item.getId(), item.getMarketHashName(), null, "uu",
                 new BigDecimal(price), null, null, "CNY", LocalDateTime.now());
     }
 
