@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/trades', name: 'trades', component: () => import('./views/TradesView.vue') },
     { path: '/costs', name: 'costs', component: () => import('./views/OtherCostsView.vue') },
     { path: '/market', name: 'market', component: () => import('./views/MarketView.vue') },
+    { path: '/report', name: 'report', component: () => import('./views/MonthlyReportView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue'), meta: { admin: true } }
   ]

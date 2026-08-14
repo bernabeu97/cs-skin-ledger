@@ -45,7 +45,7 @@ app:
       timeout-seconds: 15
     steam:
       enabled: true
-      delay-ms: 1100
+      delay-ms: 400
       timeout-seconds: 12
     youpin:
       enabled: false

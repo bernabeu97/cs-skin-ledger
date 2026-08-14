@@ -8,6 +8,7 @@ import com.cs.skinledger.dto.PriceHistoryView;
 import com.cs.skinledger.dto.MarketIndexView;
 import com.cs.skinledger.dto.CsqaqIndexKlineView;
 import com.cs.skinledger.dto.CsqaqIndexView;
+import com.cs.skinledger.dto.LotHealth;
 import com.cs.skinledger.service.CsqaqIndexService;
 import com.cs.skinledger.service.MarketplaceIdImportService;
 import com.cs.skinledger.service.MarketIndexService;
@@ -39,6 +40,12 @@ public class PriceController {
     @GetMapping("/config")
     public PriceConfigView config() {
         return priceService.config();
+    }
+
+    /** 账本数据健康指标(无行情持仓、估值覆盖率、待补填买入价)。 */
+    @GetMapping("/health")
+    public LotHealth health() {
+        return priceService.health();
     }
 
     /** 刷新持有批次的市场价，platforms 逗号分隔：uu,steam,buff */

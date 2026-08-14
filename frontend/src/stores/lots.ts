@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
 import { downloadBlob } from '../utils/format'
-import type { AggregateRow, Lot, LotCreateRequest, LotImportResult, LotPage, LotSellRequest, LotStats, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
+import type { AggregateRow, Lot, LotCreateRequest, LotHealth, LotImportResult, LotPage, LotSellRequest, LotStats, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, ReconcileReport, UuFullJsonImportResult } from '../types'
 
 export interface LotQuery {
   q?: string
@@ -20,6 +20,7 @@ export const useLotsStore = defineStore('lots', () => {
   const trash = ref<Lot[]>([])
   const summary = ref<LotSummary | null>(null)
   const stats = ref<LotStats | null>(null)
+  const health = ref<LotHealth | null>(null)
   const aggregate = ref<AggregateRow[] | null>(null)
   const pnlRows = ref<PnlRow[]>([])
   const loading = ref(false)
@@ -75,6 +76,15 @@ export const useLotsStore = defineStore('lots', () => {
     try {
       const { data } = await api.get<LotStats>('/lots/stats')
       stats.value = data
+    } catch (e) {
+      dashError.value = errorMessage(e)
+    }
+  }
+
+  async function loadHealth() {
+    try {
+      const { data } = await api.get<LotHealth>('/prices/health')
+      health.value = data
     } catch (e) {
       dashError.value = errorMessage(e)
     }
@@ -223,13 +233,26 @@ export const useLotsStore = defineStore('lots', () => {
     return data
   }
 
+  async function reconcileUuFullJson(file: File): Promise<ReconcileReport> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await api.post<ReconcileReport>('/sync/uu/reconcile', body)
+    return data
+  }
+
+  async function fixPrice(id: number, field: 'buy' | 'sell', price: number) {
+    await api.post('/sync/uu/fix-price', { id, field, price })
+    await Promise.all([loadLots(), loadSummary(), loadStats(), loadValuation()])
+  }
+
   return {
-    lots, lotsPage, trash, summary, stats, aggregate, pnlRows,
+    lots, lotsPage, trash, summary, stats, health, aggregate, pnlRows,
     loading, loadingPage, loadingSummary, loadingPnl, error, dashError,
     valuation, priceConfig, refreshingPrices, loadingValuation,
-    loadLots, loadLotsPage, loadTrash, loadSummary, loadStats, loadAggregate,
+    loadLots, loadLotsPage, loadTrash, loadSummary, loadStats, loadHealth, loadAggregate,
     loadPnl, createLot, updateLot, sellLot, deleteLot, batchFillPrice, batchDelete, restoreLot, purgeLot,
     exportLots, downloadImportTemplate, importWorkbook, importUuFullJson, previewUuFullJson,
+    reconcileUuFullJson, fixPrice,
     loadValuation, loadPriceConfig, refreshPrices
   }
 })

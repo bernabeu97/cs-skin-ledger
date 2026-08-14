@@ -91,6 +91,33 @@ export interface LotStats {
   holdingCount: number
 }
 
+export interface LotHealth {
+  holdingCount: number
+  pricedHoldingCount: number
+  unpricedHoldingCount: number
+  coverageRate: number
+  pendingBuyPriceCount: number
+}
+
+export interface AmountMismatch {
+  id: number
+  sourceRef: string
+  itemName: string
+  exterior: string | null
+  field: 'buyPrice' | 'sellPrice'
+  systemValue: number | null
+  platformValue: number
+}
+
+export interface ReconcileReport {
+  totalRecords: number
+  platformOnlyHoldings: number
+  platformOnlySales: number
+  systemOnlyCount: number
+  amountMismatches: AmountMismatch[]
+  warnings: string[]
+}
+
 export interface AggregateRow {
   key: string
   realizedPnl: number

@@ -17,7 +17,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Steam 社区市场直连（备选数据源）。
@@ -32,6 +37,10 @@ public class SteamPriceProvider implements PriceProvider {
     private final AppPriceProperties props;
     private final HttpClient http;
     private final ObjectMapper mapper;
+    /** 同一平台内并发请求数(受限流节奏约束) */
+    private static final int CONCURRENCY = 4;
+    /** 请求开始时间节奏:每个请求间隔 delayMs,池内并发可重叠但总速率受限 */
+    private final AtomicLong nextRequestSlot = new AtomicLong(0);
 
     public SteamPriceProvider(AppPriceProperties props, ObjectMapper mapper) {
         this.props = props;
@@ -57,23 +66,48 @@ public class SteamPriceProvider implements PriceProvider {
         if (!available()) {
             throw new IllegalStateException("Steam 直连未启用");
         }
-        List<PriceQuote> quotes = new ArrayList<>();
+        List<PriceQuote> quotes = Collections.synchronizedList(new ArrayList<>());
         LocalDateTime now = LocalDateTime.now();
-        for (PriceTarget t : targets) {
-            String full = t.fullMarketHashName();
-            String encoded = URLEncoder.encode(full, StandardCharsets.UTF_8);
-            String url = "https://steamcommunity.com/market/priceoverview/?appid=730&currency=23&market_hash_name=" + encoded;
-            JsonNode node = fetchOne(url, 1);
-            if (node != null && node.path("success").asBoolean(false)) {
-                BigDecimal price = parseLowestPrice(node.path("lowest_price").asText(null));
-                Integer volume = node.hasNonNull("volume") ? node.path("volume").asInt() : null;
-                if (price != null && price.signum() > 0) {
-                    quotes.add(new PriceQuote(t.itemId(), full, t.exterior(), "steam", price, null, volume, "CNY", now));
-                }
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(CONCURRENCY, Math.max(1, targets.size())));
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (PriceTarget t : targets) {
+                futures.add(pool.submit(() -> {
+                    try {
+                        pace();
+                        String full = t.fullMarketHashName();
+                        String encoded = URLEncoder.encode(full, StandardCharsets.UTF_8);
+                        String url = "https://steamcommunity.com/market/priceoverview/?appid=730&currency=23&market_hash_name=" + encoded;
+                        JsonNode node = fetchOne(url, 1);
+                        if (node != null && node.path("success").asBoolean(false)) {
+                            BigDecimal price = parseLowestPrice(node.path("lowest_price").asText(null));
+                            Integer volume = node.hasNonNull("volume") ? node.path("volume").asInt() : null;
+                            if (price != null && price.signum() > 0) {
+                                quotes.add(new PriceQuote(t.itemId(), full, t.exterior(), "steam", price, null, volume, "CNY", now));
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // 单条失败跳过,不中断整体刷新
+                    }
+                }));
             }
-            Thread.sleep(Math.max(200, props.getSteam().getDelayMs()));
+            for (Future<?> f : futures) {
+                f.get();
+            }
+        } finally {
+            pool.shutdownNow();
         }
         return quotes;
+    }
+
+    /** 控制请求开始间隔:池内并发执行,但起始时间按 delayMs 错开,避免触发 Steam 限流 */
+    private void pace() throws InterruptedException {
+        long delay = Math.max(200, props.getSteam().getDelayMs());
+        long slot = nextRequestSlot.getAndAdd(delay);
+        long wait = slot - System.currentTimeMillis();
+        if (wait > 0) {
+            Thread.sleep(wait);
+        }
     }
 
     private JsonNode fetchOne(String url, int attempt) throws Exception {

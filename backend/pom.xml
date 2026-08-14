@@ -11,7 +11,7 @@
   </parent>
   <groupId>com.cs</groupId>
   <artifactId>skin-ledger</artifactId>
-  <version>0.3.0</version>
+  <version>0.4.0</version>
   <name>skin-ledger</name>
   <description>SkinLedger CS 饰品账本后端</description>
   <properties>

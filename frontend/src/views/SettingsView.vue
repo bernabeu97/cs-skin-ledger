@@ -181,7 +181,7 @@ async function unbindToken() {
 
     <div class="card form-panel about-panel">
       <div>
-        <h3>SkinLedger v0.3.0</h3>
+        <h3>SkinLedger v0.4.0</h3>
         <p class="page-desc">本服务使用 AGPL-3.0 开源许可证。你可以查看、下载并修改当前项目源代码。</p>
       </div>
       <a class="btn" href="https://github.com/bernabeu97/cs-skin-ledger" target="_blank" rel="noreferrer">查看源代码</a>

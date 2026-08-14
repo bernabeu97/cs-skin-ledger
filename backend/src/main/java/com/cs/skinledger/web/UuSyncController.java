@@ -2,7 +2,11 @@ package com.cs.skinledger.web;
 
 import com.cs.skinledger.dto.UuImportRequest;
 import com.cs.skinledger.dto.UuImportResult;
+import com.cs.skinledger.dto.FixPriceRequest;
+import com.cs.skinledger.dto.LotResponse;
+import com.cs.skinledger.dto.ReconcileReport;
 import com.cs.skinledger.dto.UuFullJsonImportResult;
+import com.cs.skinledger.service.LotService;
 import com.cs.skinledger.service.UuFullJsonImportService;
 import com.cs.skinledger.service.UuImportService;
 import jakarta.validation.Valid;
@@ -27,6 +31,7 @@ public class UuSyncController {
 
     private final UuImportService uuImportService;
     private final UuFullJsonImportService uuFullJsonImportService;
+    private final LotService lotService;
 
     @PostMapping("/import")
     public UuImportResult importData(@Valid @RequestBody UuImportRequest req) {
@@ -42,5 +47,17 @@ public class UuSyncController {
     @PostMapping(value = "/preview-full-json", consumes = "multipart/form-data")
     public UuFullJsonImportResult previewFullJson(@RequestParam("file") MultipartFile file) throws IOException {
         return uuFullJsonImportService.previewFile(file);
+    }
+
+    /** 双向对账:上传平台全量记录,输出平台独有/系统独有/金额不一致三类差异。 */
+    @PostMapping(value = "/reconcile", consumes = "multipart/form-data")
+    public ReconcileReport reconcile(@RequestParam("file") MultipartFile file) throws IOException {
+        return uuFullJsonImportService.reconcileFile(file);
+    }
+
+    /** 对账确认后以平台为准修正单条金额。 */
+    @PostMapping("/fix-price")
+    public LotResponse fixPrice(@Valid @RequestBody FixPriceRequest req) {
+        return lotService.fixPrice(req.id(), req.field(), req.price());
     }
 }

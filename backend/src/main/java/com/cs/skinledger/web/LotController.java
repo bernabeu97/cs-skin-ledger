@@ -58,7 +58,7 @@ public class LotController {
             @RequestParam(required = false) String platform,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        return lotService.list(new LotFilter(q, status, platform, from, to));
+        return lotService.list(new LotFilter(q, status, platform, from, to, null));
     }
 
     @GetMapping("/page")
@@ -69,8 +69,9 @@ public class LotController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return lotService.page(new LotFilter(q, status, platform, from, to), page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) Boolean noprice) {
+        return lotService.page(new LotFilter(q, status, platform, from, to, noprice), page, size);
     }
 
     @GetMapping("/stats")
@@ -85,7 +86,7 @@ public class LotController {
 
     @GetMapping("/{id}")
     public LotResponse get(@PathVariable Long id) {
-        return lotService.list(new LotFilter(null, null, null, null, null)).stream()
+        return lotService.list(new LotFilter(null, null, null, null, null, null)).stream()
                 .filter(l -> l.id().equals(id))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + id));

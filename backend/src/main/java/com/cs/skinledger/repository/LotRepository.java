@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.time.LocalDateTime;
 
@@ -18,6 +19,10 @@ public interface LotRepository extends JpaRepository<Lot, Long>, JpaSpecificatio
     Optional<Lot> findByIdAndUserId(Long id, Long userId);
 
     Optional<Lot> findByIdAndUserIdAndDeletedAtIsNull(Long id, Long userId);
+
+    List<Lot> findByUserIdAndSourceRefIn(Long userId, Collection<String> sourceRefs);
+
+    List<Lot> findByUserIdAndSourceRefStartingWith(Long userId, String prefix);
 
     boolean existsByUserIdAndSourceRef(Long userId, String sourceRef);
 

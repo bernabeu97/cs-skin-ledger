@@ -6,6 +6,7 @@ import com.cs.skinledger.domain.Lot;
 import com.cs.skinledger.domain.LotStatus;
 import com.cs.skinledger.domain.PriceSnapshot;
 import com.cs.skinledger.dto.HoldingValuation;
+import com.cs.skinledger.dto.LotHealth;
 import com.cs.skinledger.dto.PortfolioValuation;
 import com.cs.skinledger.dto.PriceConfigView;
 import com.cs.skinledger.dto.PriceQuote;
@@ -152,6 +153,37 @@ public class PriceService {
                     latestPrices));
         }
         return new PortfolioValuation(holdingCost, marketValue, unrealized, priceAsOf, rows);
+    }
+
+    /** 账本数据健康指标:无行情持仓数、估值覆盖率、待补填买入价条数。 */
+    @Transactional(readOnly = true)
+    public LotHealth health() {
+        List<Lot> all = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id());
+        List<Lot> holdings = all.stream().filter(l -> l.getStatus() == LotStatus.HOLDING).toList();
+        int pending = (int) all.stream()
+                .filter(l -> l.getBuyPrice() == null || l.getBuyPrice().signum() == 0)
+                .count();
+        Set<Long> unpriced = unpricedHoldingIds(holdings);
+        int holdingCount = holdings.size();
+        int unpricedCount = unpriced.size();
+        int pricedCount = holdingCount - unpricedCount;
+        double coverageRate = holdingCount == 0 ? 0d : (double) pricedCount / holdingCount;
+        return new LotHealth(holdingCount, pricedCount, unpricedCount, coverageRate, pending);
+    }
+
+    /** 返回没有可用 UU 行情的持仓批次 id 集合(与估值同口径)。 */
+    public Set<Long> unpricedHoldingIds(List<Lot> holdings) {
+        if (holdings == null || holdings.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> itemIds = holdings.stream().map(l -> l.getItem().getId()).distinct().toList();
+        Map<String, Map<String, PriceSnapshot>> latest = snapshotRepository.findLatestByItemIds(itemIds).stream()
+                .collect(Collectors.groupingBy(ps -> priceKey(ps.getItem().getId(), ps.getExterior()),
+                        Collectors.toMap(PriceSnapshot::getPlatform, Function.identity(), (a, b) -> a)));
+        return holdings.stream()
+                .filter(l -> pickSnapshot(latest.get(priceKey(l.getItem().getId(), l.getExterior()))) == null)
+                .map(Lot::getId)
+                .collect(Collectors.toSet());
     }
 
     /** 是否存在至少一个可用数据源 */

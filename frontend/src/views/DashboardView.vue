@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ColumnPicker from '../components/ColumnPicker.vue'
 import PnlChart from '../components/PnlChart.vue'
@@ -28,6 +28,8 @@ const period = ref<'month' | 'week' | 'day' | 'year'>('month')
 const refreshing = ref(false)
 const refreshingPrices = ref(false)
 const priceMessage = ref('')
+const holdingPage = ref(1)
+const holdingPageSize = 20
 const { visibleColumns: holdingVisibleColumns, isColumnVisible: isHoldingColumnVisible } = useColumnVisibility('columns:dashboard-holdings', HOLDING_COLUMNS)
 
 const periodLabel = computed(() => PERIODS.find(p => p.v === period.value)?.label ?? '月度')
@@ -41,6 +43,19 @@ const monthRealized = computed(() => {
 })
 
 const holdingLots = computed(() => store.lots.filter(l => l.status === 'HOLDING'))
+const holdingTotalPages = computed(() => Math.max(1, Math.ceil(holdingLots.value.length / holdingPageSize)))
+const pagedHoldingLots = computed(() => {
+  const start = (holdingPage.value - 1) * holdingPageSize
+  return holdingLots.value.slice(start, start + holdingPageSize)
+})
+
+function goHoldingPage(next: number) {
+  holdingPage.value = Math.min(Math.max(next, 1), holdingTotalPages.value)
+}
+
+watch(holdingLots, () => {
+  if (holdingPage.value > holdingTotalPages.value) holdingPage.value = holdingTotalPages.value
+})
 
 /** lotId -> 估值行 */
 const valuationMap = computed(() => {
@@ -96,7 +111,8 @@ async function loadAll() {
       store.loadPriceConfig(),
       costsStore.loadSummary(),
       store.loadStats(),
-      store.loadAggregate('item')
+      store.loadAggregate('item'),
+      store.loadHealth()
     ])
   } finally {
     refreshing.value = false
@@ -226,6 +242,24 @@ onMounted(loadAll)
         <div class="metric-value num">{{ winRate == null ? '-' : Math.round(winRate * 100) + '%' }}</div>
         <span class="metric-sub">盈利卖出批次 ÷ 已卖出批次{{ store.stats ? `（${store.stats.winningSoldCount}/${store.stats.soldCount}）` : '' }}</span>
       </div>
+      <div class="card metric health-card">
+        <span class="metric-label">数据健康</span>
+        <div class="health-row">
+          <button type="button" class="health-link" @click="router.push('/trades?pending=1')">
+            <b class="num" :class="(store.health?.pendingBuyPriceCount ?? 0) > 0 ? 'down' : 'up'">{{ store.health?.pendingBuyPriceCount ?? '-' }}</b>
+            <small>待补填买入价</small>
+          </button>
+          <button type="button" class="health-link" @click="router.push('/trades?noprice=1')">
+            <b class="num" :class="(store.health?.unpricedHoldingCount ?? 0) > 0 ? 'down' : 'up'">{{ store.health?.unpricedHoldingCount ?? '-' }}</b>
+            <small>无行情持仓</small>
+          </button>
+          <span class="health-link">
+            <b class="num">{{ store.health?.coverageRate != null ? Math.round(store.health.coverageRate * 100) + '%' : '-' }}</b>
+            <small>估值覆盖率</small>
+          </span>
+        </div>
+        <span class="metric-sub">点击指标直达账本筛选并批量补填</span>
+      </div>
     </div>
 
     <div class="chart-bar">
@@ -266,7 +300,7 @@ onMounted(loadAll)
           </tr>
         </tbody>
         <tbody v-else>
-          <tr v-for="lot in holdingLots" :key="lot.id">
+          <tr v-for="lot in pagedHoldingLots" :key="lot.id">
             <td v-if="isHoldingColumnVisible('item')">{{ lot.itemNameZh ?? lot.itemName }}</td>
             <td v-if="isHoldingColumnVisible('exterior')">{{ lot.exterior ?? '-' }}</td>
             <td v-if="isHoldingColumnVisible('quantity')" class="num">{{ formatQty(lot.quantity) }}</td>
@@ -289,6 +323,12 @@ onMounted(loadAll)
           </tr>
         </tbody>
       </table>
+    </div>
+    <div v-if="holdingTotalPages > 1" class="holding-pagination">
+      <span class="pagination-total">共 {{ holdingLots.length }} 条</span>
+      <button type="button" class="btn btn-sm" :disabled="holdingPage <= 1" @click="goHoldingPage(holdingPage - 1)">‹ 上一页</button>
+      <span class="pagination-index num">{{ holdingPage }} / {{ holdingTotalPages }}</span>
+      <button type="button" class="btn btn-sm" :disabled="holdingPage >= holdingTotalPages" @click="goHoldingPage(holdingPage + 1)">下一页 ›</button>
     </div>
     <div v-if="!store.loading && !store.dashError && holdingLots.length === 0" class="empty-state">
       <div class="empty-icon" aria-hidden="true">🎒</div>
@@ -355,6 +395,15 @@ table.data td.down { color: var(--danger); font-weight: 600; }
 .top-more { font-size: 12px; }
 .top-name { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .empty-state.compact { padding: 18px; }
+.health-card { min-width: 0; }
+.health-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 4px; }
+.health-link { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-solid); text-align: left; cursor: pointer; }
+.health-link:hover { border-color: var(--accent); }
+.health-link b { font-size: 18px; font-weight: 650; }
+.health-link small { font-size: 10px; color: var(--text-muted); }
+.holding-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.pagination-total { font-size: 12px; color: var(--text-muted); margin-right: auto; }
+.pagination-index { font-size: 13px; color: var(--text-secondary); min-width: 56px; text-align: center; }
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
 }
@@ -362,5 +411,6 @@ table.data td.down { color: var(--danger); font-weight: 600; }
   .cards { grid-template-columns: 1fr; }
   .period-group { position: static; margin: -8px 0 12px; }
   .hint-banner { flex-direction: column; align-items: flex-start; }
+  .health-row { grid-template-columns: 1fr; }
 }
 </style>

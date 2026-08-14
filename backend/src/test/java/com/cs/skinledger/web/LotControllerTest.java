@@ -2,6 +2,8 @@ package com.cs.skinledger.web;
 
 import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
+import com.cs.skinledger.repository.PriceSnapshotRepository;
+import com.cs.skinledger.domain.PriceSnapshot;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,9 @@ class LotControllerTest {
     private ItemRepository itemRepository;
 
     @Autowired
+    private PriceSnapshotRepository priceSnapshotRepository;
+
+    @Autowired
     private com.cs.skinledger.repository.AlertRepository alertRepository;
 
     @Autowired
@@ -64,6 +69,7 @@ class LotControllerTest {
     @BeforeEach
     void cleanDatabase() {
         tradeRepository.deleteAll();
+        priceSnapshotRepository.deleteAll();
         lotRepository.deleteAll();
         otherCostRepository.deleteAll();
         settingRepository.deleteAll();
@@ -325,5 +331,86 @@ class LotControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.holdingsImported").value(0))
                 .andExpect(jsonPath("$.holdingsSkippedDuplicates").value(2));
+    }
+
+    @Test
+    void healthReportsCoverageAndPendingPrices() throws Exception {
+        String a = mockMvc.perform(post("/api/lots").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Health Knife A", "100", "2026-01-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long idA = objectMapper.readTree(a).get("id").asLong();
+        mockMvc.perform(post("/api/lots").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(buyBody("Health Knife B", "0", "2026-02-01T10:00:00")));
+
+        com.cs.skinledger.domain.Item item = itemRepository.findAll().get(0);
+        PriceSnapshot snapshot = new PriceSnapshot();
+        snapshot.setItem(item);
+        snapshot.setPlatform("uu");
+        snapshot.setPrice(new java.math.BigDecimal("50"));
+        snapshot.setFetchedAt(java.time.LocalDateTime.now());
+        priceSnapshotRepository.save(snapshot);
+
+        mockMvc.perform(get("/api/prices/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.holdingCount").value(2))
+                .andExpect(jsonPath("$.pricedHoldingCount").value(1))
+                .andExpect(jsonPath("$.unpricedHoldingCount").value(1))
+                .andExpect(jsonPath("$.coverageRate").value(0.5))
+                .andExpect(jsonPath("$.pendingBuyPriceCount").value(1));
+
+        mockMvc.perform(get("/api/lots/page").param("noprice", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(idA + 1));
+    }
+
+    @Test
+    void reconcileReportsDiffsAndFixPriceAppliesConfirmedValue() throws Exception {
+        String json = """
+                {"records":[
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"Recon Knife (Field-Tested)",
+                   "price":12.34,"orderNo":"B1","createOrderTime":1700000000000,
+                   "raw":{"finishOrderTime":1700000000000}},
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"Recon Knife (Field-Tested)",
+                   "price":12.34,"orderNo":"B2","createOrderTime":1700001000000,
+                   "raw":{"finishOrderTime":1700001000000}}
+                ]}
+                """;
+        MockMultipartFile file = new MockMultipartFile("file", "records.json", "application/json", json.getBytes());
+        mockMvc.perform(multipart("/api/sync/uu/import-full-json").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.holdingsImported").value(2));
+
+        // 只有 B1(价格改为 99)+ 新增 B3 -> 差异:平台独有 1、系统独有 1、金额不一致 1
+        String diffJson = """
+                {"records":[
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"Recon Knife (Field-Tested)",
+                   "price":99.00,"orderNo":"B1","createOrderTime":1700000000000,
+                   "raw":{"finishOrderTime":1700000000000}},
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"Recon Knife (Field-Tested)",
+                   "price":5.00,"orderNo":"B3","createOrderTime":1700002000000,
+                   "raw":{"finishOrderTime":1700002000000}}
+                ]}
+                """;
+        MockMultipartFile diff = new MockMultipartFile("file", "diff.json", "application/json", diffJson.getBytes());
+        mockMvc.perform(multipart("/api/sync/uu/reconcile").file(diff).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.platformOnlyHoldings").value(1))
+                .andExpect(jsonPath("$.systemOnlyCount").value(1))
+                .andExpect(jsonPath("$.amountMismatches.length()").value(1))
+                .andExpect(jsonPath("$.amountMismatches[0].field").value("buyPrice"))
+                .andExpect(jsonPath("$.amountMismatches[0].systemValue").value(12.34))
+                .andExpect(jsonPath("$.amountMismatches[0].platformValue").value(99.0));
+
+        long id = objectMapper.readTree(
+                mockMvc.perform(get("/api/lots")).andReturn().getResponse().getContentAsString())
+                .get(0).get("id").asLong();
+        mockMvc.perform(post("/api/sync/uu/fix-price").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", id, "field", "buy", "price", "99"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.buyPrice").value(99.0));
     }
 }

@@ -45,6 +45,10 @@
 - [x] **样式全面换新**：CS 电竞深色风（玻璃态卡片、荧光青/绿、金/红盈亏）、登录页重做、移动端表格固定首列/操作列。
 - [x] **命令面板**：Ctrl+K 导航 + 高频操作（新增买入 / 刷新行情 / 切换主题），中英文搜索。
 - [x] **部署**：`v0.3.0` tag 触发 GitHub Actions 构建并通过 SSH 自动部署（`deploy-cloud.yml` + `scripts/cloud-deploy.sh`，备份→替换→健康检查→回滚）；V13 迁移修复 `invite_codes.code_hash` CHAR→VARCHAR。
+- [x] **数据健康中心**：`GET /api/prices/health` 返回待补填买入价 / 无行情持仓 / 估值覆盖率；账本支持 `noprice` 筛选（`/api/lots/page?noprice=true`），仪表盘数据健康卡一键直达。
+- [x] **悠悠双向对账**：`POST /api/sync/uu/reconcile` 输出平台独有 / 系统独有 / 金额不一致三类差异；`POST /api/sync/uu/fix-price` 逐条确认后以平台为准修正。
+- [x] **月度报告页**：`/report` 任意月份盈亏、胜率、TOP5、平台分布、其他收支、当前市值，浏览器打印为 PDF。
+- [x] **行情刷新并发**：Steam/UU 直连改为受限并发池（默认 4 并发），Steam 请求间隔降至 400ms，CSQAQ 每秒限流闸门保留。
 - [ ] **浏览器自动抓取助手**（一键从悠悠官网自动获取）：独立后续立项，本轮实现「比对预览 + 手动选择导出文件」；服务器直连悠悠受 WAF/风控限制且违反凭据安全原则。
 - [ ] **网页系统通知**：依赖 HTTPS；当前 HTTP 阶段用轮询横幅替代，接入域名后启用。
 

@@ -9,5 +9,6 @@ public record LotFilter(
         LotStatus status,
         String platform,
         LocalDateTime from,
-        LocalDateTime to) {
+        LocalDateTime to,
+        Boolean noprice) {
 }

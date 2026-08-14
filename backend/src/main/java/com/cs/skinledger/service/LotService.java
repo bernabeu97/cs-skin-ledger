@@ -45,6 +45,7 @@ public class LotService {
     private final LotRepository lotRepository;
     private final CurrentUser currentUser;
     private final ItemRepository itemRepository;
+    private final PriceService priceService;
 
     @Transactional
     public LotResponse create(LotCreateRequest req) {
@@ -164,6 +165,22 @@ public class LotService {
         Specification<Lot> spec = filter == null
                 ? (root, query, cb) -> cb.equal(root.get("user").get("id"), currentUser.id())
                 : buildSpec(filter);
+        if (filter != null && Boolean.TRUE.equals(filter.noprice())) {
+            // 无行情筛选:先取全部匹配持仓,再用估值同口径过滤后内存分页
+            List<Lot> all = lotRepository.findAll(spec, Sort.by("buyTime").descending());
+            Set<Long> unpriced = priceService.unpricedHoldingIds(all.stream()
+                    .filter(l -> l.getStatus() == LotStatus.HOLDING).toList());
+            List<LotResponse> filtered = all.stream()
+                    .filter(l -> unpriced.contains(l.getId()))
+                    .map(LotResponse::from)
+                    .toList();
+            int total = filtered.size();
+            int fromIndex = Math.min((safePage - 1) * safeSize, total);
+            int toIndex = Math.min(fromIndex + safeSize, total);
+            List<LotResponse> items = total == 0 ? List.of() : filtered.subList(fromIndex, toIndex);
+            int totalPages = safeSize == 0 ? 0 : (int) Math.ceil(total / (double) safeSize);
+            return new LotPage(items, total, safePage, safeSize, totalPages);
+        }
         Page<Lot> result = lotRepository.findAll(spec,
                 PageRequest.of(safePage - 1, safeSize, Sort.by("buyTime").descending()));
         return new LotPage(
@@ -271,6 +288,30 @@ public class LotService {
             deleted++;
         }
         return deleted;
+    }
+
+    /** 对账确认后以平台为准修正单条金额(buy=买入价 / sell=出售价)。 */
+    @Transactional
+    public LotResponse fixPrice(Long id, String field, BigDecimal price) {
+        if (price == null || price.signum() < 0) {
+            throw new IllegalArgumentException("金额不能为负");
+        }
+        Lot lot = ownedLot(id);
+        if ("buy".equals(field)) {
+            lot.setBuyPrice(price);
+            if (lot.getStatus() == LotStatus.SOLD) {
+                recomputeSell(lot);
+            }
+        } else if ("sell".equals(field)) {
+            if (lot.getStatus() != LotStatus.SOLD) {
+                throw new IllegalArgumentException("仅已卖出的批次可修正出售价");
+            }
+            lot.setSellPrice(price);
+            recomputeSell(lot);
+        } else {
+            throw new IllegalArgumentException("field 仅支持 buy/sell");
+        }
+        return LotResponse.from(lotRepository.save(lot));
     }
 
     @Transactional(readOnly = true)

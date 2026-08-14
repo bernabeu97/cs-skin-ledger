@@ -51,6 +51,13 @@ const actions = computed<Action[]>(() => {
       run: () => router.push('/market')
     },
     {
+      id: 'report',
+      label: '月度报告',
+      hint: '月报 / 打印 PDF',
+      keywords: 'report 月报 报告 report pdf',
+      run: () => router.push('/report')
+    },
+    {
       id: 'settings',
       label: '设置',
       hint: '费率 / CSQAQ Token',

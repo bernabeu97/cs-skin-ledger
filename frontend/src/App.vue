@@ -24,6 +24,7 @@ function openPalette() {
         <router-link to="/trades" class="nav-link">账本</router-link>
         <router-link to="/costs" class="nav-link">收支</router-link>
         <router-link to="/market" class="nav-link">行情</router-link>
+        <router-link to="/report" class="nav-link">月报</router-link>
         <router-link to="/settings" class="nav-link">设置</router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="nav-link">管理</router-link>
       </nav>

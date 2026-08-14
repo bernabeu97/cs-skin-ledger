@@ -13,7 +13,7 @@ import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
 import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 import { useColumnVisibility } from '../utils/columnVisibility'
-import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert, UuFullJsonImportResult } from '../types'
+import type { AmountMismatch, Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert, ReconcileReport, UuFullJsonImportResult } from '../types'
 
 type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
 
@@ -46,6 +46,7 @@ const sellTarget = ref<Lot | null>(null)
 const saving = ref(false)
 const searchEl = ref<HTMLInputElement | null>(null)
 const pendingOnly = ref(false)
+const nopriceOnly = ref(false)
 const highlightId = ref<number | null>(null)
 const route = useRoute()
 const alertsStore = useAlertsStore()
@@ -61,6 +62,10 @@ const fillPriceBusy = ref(false)
 const uuPreview = ref<UuFullJsonImportResult | null>(null)
 const pendingUuFile = ref<File | null>(null)
 const uuPreviewBusy = ref(false)
+const reconcileReport = ref<ReconcileReport | null>(null)
+const pendingReconcileFile = ref<File | null>(null)
+const reconcileBusy = ref(false)
+const reconcileFileEl = ref<HTMLInputElement | null>(null)
 const batchBusy = ref(false)
 const alertItem = ref<Item | null>(null)
 const alertExterior = ref('')
@@ -79,7 +84,7 @@ const { visibleColumns: alertVisibleColumns, isColumnVisible: isAlertColumnVisib
 
 const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
-  return !!q.value || !!status.value || !!platform.value || pendingOnly.value || range.value === '7' || range.value === '30' || customActive
+  return !!q.value || !!status.value || !!platform.value || pendingOnly.value || nopriceOnly.value || range.value === '7' || range.value === '30' || customActive
 })
 
 const totalPages = computed(() => store.lotsPage?.totalPages ?? 1)
@@ -112,6 +117,7 @@ function buildQuery(): Record<string, string> {
   if (q.value) params.q = q.value
   if (status.value) params.status = status.value
   if (platform.value) params.platform = platform.value
+  if (nopriceOnly.value) params.noprice = 'true'
   if (range.value === '7' || range.value === '30') {
     const days = Number(range.value)
     const from = new Date()
@@ -146,6 +152,7 @@ function resetFilters() {
   status.value = ''
   platform.value = ''
   pendingOnly.value = false
+  nopriceOnly.value = false
   range.value = 'all'
   fromDate.value = ''
   toDate.value = ''
@@ -530,6 +537,69 @@ function applyRouteTarget() {
   if (route.query.pending === '1') {
     pendingOnly.value = true
   }
+  if (route.query.noprice === '1') {
+    nopriceOnly.value = true
+  }
+}
+
+async function onReconcileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    ui.toast('error', '请选择 JSON 文件')
+    return
+  }
+  reconcileBusy.value = true
+  try {
+    const report = await store.reconcileUuFullJson(file)
+    reconcileReport.value = report
+    pendingReconcileFile.value = file
+  } catch (e) {
+    ui.toast('error', errorMessage(e), 7000)
+  } finally {
+    reconcileBusy.value = false
+  }
+}
+
+function closeReconcile() {
+  reconcileReport.value = null
+  pendingReconcileFile.value = null
+}
+
+async function importReconciled() {
+  const file = pendingReconcileFile.value
+  if (!file || importingUu.value) return
+  importingUu.value = true
+  try {
+    const result = await store.importUuFullJson(file)
+    ui.toast('success', `已补导平台独有记录：新增 ${result.holdingsImported + result.salesImported} 条，重复跳过 ${result.holdingsSkippedDuplicates + result.salesSkippedDuplicates} 条`, 6000)
+    await refreshAll()
+    const report = await store.reconcileUuFullJson(file)
+    reconcileReport.value = report
+  } catch (e) {
+    ui.toast('error', errorMessage(e), 7000)
+  } finally {
+    importingUu.value = false
+  }
+}
+
+async function confirmFixMismatch(mismatch: AmountMismatch) {
+  if (reconcileBusy.value) return
+  reconcileBusy.value = true
+  try {
+    await store.fixPrice(mismatch.id, mismatch.field === 'buyPrice' ? 'buy' : 'sell', mismatch.platformValue)
+    ui.toast('success', `已按平台修正「${mismatch.itemName}」${mismatch.field === 'buyPrice' ? '买入价' : '出售价'}为 ${formatMoney(mismatch.platformValue)}`)
+    await refreshAll()
+    if (pendingReconcileFile.value) {
+      reconcileReport.value = await store.reconcileUuFullJson(pendingReconcileFile.value)
+    }
+  } catch (e) {
+    ui.toast('error', errorMessage(e))
+  } finally {
+    reconcileBusy.value = false
+  }
 }
 
 onMounted(() => {
@@ -591,6 +661,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         :class="{ active: pendingOnly }"
         @click="pendingOnly = !pendingOnly; refreshWithReset()"
       >待补填买入价</button>
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: nopriceOnly }"
+        @click="nopriceOnly = !nopriceOnly; refreshWithReset()"
+      >无行情</button>
       <select v-model="platform" class="select filter" @change="refreshWithReset">
         <option value="">全部平台</option>
         <option value="steam">Steam</option>
@@ -631,6 +707,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         :disabled="importingUu"
         @click="requestUuImport()"
       >{{ importingUu ? '导入中…' : '导入 UU JSON' }}</button>
+      <input ref="reconcileFileEl" class="visually-hidden" type="file" accept="application/json,.json" @change="onReconcileSelected" />
+      <button type="button" class="btn btn-ghost btn-sm" :disabled="reconcileBusy" @click="reconcileFileEl?.click()">
+        {{ reconcileBusy ? '对账中…' : 'UU 对账' }}
+      </button>
       <button type="button" class="btn btn-ghost btn-sm" @click="requestUuImport(true)">安装/使用帮助</button>
       <div class="export-group">
         <button type="button" class="btn btn-ghost btn-sm" title="导出 CSV" @click="onExport('csv')">CSV</button>
@@ -641,7 +721,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
     </div>
 
     <div v-if="hasFilters" class="filter-summary">
-      当前筛选：{{ q ? `关键词“${q}”` : '' }}{{ status === 'HOLDING' ? ' · 持仓中' : status === 'SOLD' ? ' · 已卖出' : '' }}{{ platform ? ` · ${platform}` : '' }}{{ range === '7' ? ' · 近7天' : range === '30' ? ' · 近30天' : range === 'custom' ? ' · 自定义区间' : '' }}
+      当前筛选：{{ q ? `关键词“${q}”` : '' }}{{ status === 'HOLDING' ? ' · 持仓中' : status === 'SOLD' ? ' · 已卖出' : '' }}{{ platform ? ` · ${platform}` : '' }}{{ pendingOnly ? ' · 待补填' : '' }}{{ nopriceOnly ? ' · 无行情' : '' }}{{ range === '7' ? ' · 近7天' : range === '30' ? ' · 近30天' : range === 'custom' ? ' · 自定义区间' : '' }}
       <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">清除</button>
     </div>
 
@@ -773,6 +853,57 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
           <button type="button" class="btn btn-primary" :disabled="importingUu || (uuPreview.holdingsImported + uuPreview.salesImported) === 0" @click="confirmImportUu">
             {{ importingUu ? '导入中…' : `确认导入 ${uuPreview.holdingsImported + uuPreview.salesImported} 条` }}
           </button>
+        </footer>
+      </section>
+    </div>
+    <div v-if="reconcileReport" class="dialog-mask" role="dialog" aria-modal="true" aria-labelledby="reconcile-title" @click.self="closeReconcile">
+      <section class="dialog-panel uu-guide">
+        <header class="guide-head">
+          <div>
+            <span class="guide-kicker">UU 双向对账</span>
+            <h2 id="reconcile-title">平台文件 vs 系统账本</h2>
+          </div>
+          <button type="button" class="guide-close" aria-label="关闭" @click="closeReconcile">×</button>
+        </header>
+        <div class="preview-grid">
+          <div class="preview-stat"><span>平台独有·持有</span><b class="num">{{ reconcileReport.platformOnlyHoldings }}</b></div>
+          <div class="preview-stat"><span>平台独有·卖出</span><b class="num">{{ reconcileReport.platformOnlySales }}</b></div>
+          <div class="preview-stat"><span>系统独有</span><b class="num warn">{{ reconcileReport.systemOnlyCount }}</b></div>
+          <div class="preview-stat"><span>金额不一致</span><b class="num" :class="reconcileReport.amountMismatches.length ? 'warn' : 'up'">{{ reconcileReport.amountMismatches.length }}</b></div>
+          <div class="preview-stat"><span>文件记录总数</span><b class="num muted">{{ reconcileReport.totalRecords }}</b></div>
+          <div class="preview-stat"><span>待导入</span><b class="num">{{ reconcileReport.platformOnlyHoldings + reconcileReport.platformOnlySales }}</b></div>
+        </div>
+        <div v-if="reconcileReport.warnings.length" class="preview-warnings">
+          <p v-for="(w, i) in reconcileReport.warnings" :key="i">{{ w }}</p>
+        </div>
+        <div v-if="reconcileReport.amountMismatches.length" class="mismatch-block">
+          <h4>金额不一致（需逐条确认）</h4>
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>饰品</th><th>字段</th><th class="num-head">系统值</th><th class="num-head">平台值</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="m in reconcileReport.amountMismatches" :key="m.id">
+                  <td>{{ m.itemName }}<small v-if="m.exterior"> · {{ m.exterior }}</small></td>
+                  <td>{{ m.field === 'buyPrice' ? '买入价' : '出售价' }}</td>
+                  <td class="num">{{ m.systemValue == null ? '0.00' : formatMoney(m.systemValue) }}</td>
+                  <td class="num" :class="m.platformValue >= (m.systemValue ?? 0) ? 'up' : 'down'">{{ formatMoney(m.platformValue) }}</td>
+                  <td class="row-actions">
+                    <button type="button" class="btn btn-sm" :disabled="reconcileBusy" @click="confirmFixMismatch(m)">以平台为准修正</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <footer class="guide-actions">
+          <span class="guide-spacer"></span>
+          <button type="button" class="btn" @click="closeReconcile">关闭</button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="importingUu || (reconcileReport.platformOnlyHoldings + reconcileReport.platformOnlySales) === 0"
+            @click="importReconciled"
+          >{{ importingUu ? '导入中…' : `导入平台独有 ${reconcileReport.platformOnlyHoldings + reconcileReport.platformOnlySales} 条` }}</button>
         </footer>
       </section>
     </div>
@@ -955,6 +1086,10 @@ kbd { font-family: var(--font-mono); background: var(--surface-muted); border: 1
 .preview-warnings, .preview-errors { margin: 0 22px 6px; }
 .preview-warnings p, .preview-errors p { margin: 3px 0; font-size: 12px; color: var(--warn-text); }
 .preview-errors p { color: var(--danger); }
+.mismatch-block { padding: 2px 22px 14px; }
+.mismatch-block h4 { margin: 12px 0 8px; font-size: 13px; }
+.mismatch-block small { color: var(--text-muted); }
+.mismatch-block .table-wrap { max-height: 260px; }
 .alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .alert-bar .item-select { flex: 1; min-width: 220px; }
 .danger-text { color: var(--danger) !important; }

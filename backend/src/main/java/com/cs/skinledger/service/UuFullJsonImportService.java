@@ -1,12 +1,17 @@
 package com.cs.skinledger.service;
 
 import com.cs.skinledger.dto.UuFullJsonImportResult;
+import com.cs.skinledger.dto.AmountMismatch;
+import com.cs.skinledger.dto.ReconcileReport;
 import com.cs.skinledger.dto.UuImportRequest;
 import com.cs.skinledger.dto.UuImportResult;
+import com.cs.skinledger.domain.Lot;
+import com.cs.skinledger.repository.LotRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -24,6 +29,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.cs.skinledger.domain.User;
 
@@ -44,6 +50,8 @@ public class UuFullJsonImportService {
 
     private final ObjectMapper objectMapper;
     private final UuImportService uuImportService;
+    private final LotRepository lotRepository;
+    private final CurrentUser currentUser;
 
     public UuFullJsonImportResult importFile(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
@@ -80,6 +88,92 @@ public class UuFullJsonImportService {
         try (InputStream input = file.getInputStream()) {
             return previewStream(input, null);
         }
+    }
+
+    /** 双向对账:平台文件与系统账本比对,输出三类差异(仅提示,修正需逐条确认)。 */
+    @Transactional(readOnly = true)
+    public ReconcileReport reconcileFile(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("请选择悠悠有品全量记录 JSON 文件");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("JSON 文件不能超过 64MB");
+        }
+        try (InputStream input = file.getInputStream()) {
+            ParsedBundle bundle = parseStream(input);
+            return reconcile(bundle, currentUser.get());
+        }
+    }
+
+    private ReconcileReport reconcile(ParsedBundle bundle, User user) {
+        Map<String, BigDecimal> buyByRef = new HashMap<>();
+        for (UuImportRequest.HoldingImport h : bundle.request().holdings()) {
+            if (h.sourceRef() != null && !h.sourceRef().isBlank()) {
+                buyByRef.put(h.sourceRef().trim(), h.buyPrice());
+            }
+        }
+        Map<String, BigDecimal> sellByRef = new HashMap<>();
+        for (UuImportRequest.SaleImport s : bundle.request().sales()) {
+            if (s.sourceRef() != null && !s.sourceRef().isBlank()) {
+                sellByRef.put(s.sourceRef().trim(), s.sellPrice());
+            }
+        }
+        Set<String> platformRefs = new java.util.HashSet<>();
+        platformRefs.addAll(buyByRef.keySet());
+        platformRefs.addAll(sellByRef.keySet());
+
+        Long userId = user.getId();
+        Map<String, Lot> existing = lotRepository.findByUserIdAndSourceRefIn(userId, platformRefs).stream()
+                .collect(java.util.stream.Collectors.toMap(l -> l.getSourceRef().trim(), l -> l, (a, b) -> a));
+
+        int platformOnlyHoldings = 0;
+        for (String ref : buyByRef.keySet()) {
+            if (!existing.containsKey(ref)) {
+                platformOnlyHoldings++;
+            }
+        }
+        int platformOnlySales = 0;
+        for (String ref : sellByRef.keySet()) {
+            if (!existing.containsKey(ref)) {
+                platformOnlySales++;
+            }
+        }
+
+        int systemOnly = 0;
+        for (Lot lot : lotRepository.findByUserIdAndSourceRefStartingWith(userId, "uu:full:")) {
+            if (lot.getSourceRef() == null || !platformRefs.contains(lot.getSourceRef().trim())) {
+                systemOnly++;
+            }
+        }
+
+        List<AmountMismatch> mismatches = new ArrayList<>();
+        for (Lot lot : existing.values()) {
+            String ref = lot.getSourceRef().trim();
+            if (buyByRef.containsKey(ref)) {
+                BigDecimal platform = buyByRef.get(ref);
+                BigDecimal system = lot.getBuyPrice();
+                if (platform != null && (system == null || platform.compareTo(system) != 0)) {
+                    mismatches.add(new AmountMismatch(lot.getId(), ref,
+                            lot.getItem().getMarketHashName(), lot.getExterior(),
+                            "buyPrice", system, platform));
+                }
+            } else if (sellByRef.containsKey(ref)) {
+                BigDecimal platform = sellByRef.get(ref);
+                BigDecimal system = lot.getSellPrice();
+                if (platform != null && (system == null || platform.compareTo(system) != 0)) {
+                    mismatches.add(new AmountMismatch(lot.getId(), ref,
+                            lot.getItem().getMarketHashName(), lot.getExterior(),
+                            "sellPrice", system, platform));
+                }
+            }
+        }
+
+        List<String> warnings = new ArrayList<>(bundle.warnings());
+        if (systemOnly > 0) {
+            warnings.add("系统内有 " + systemOnly + " 条悠悠来源记录在当前平台文件中不存在，请人工核对是否已删除/导出不全");
+        }
+        return new ReconcileReport(bundle.totalRecords(), platformOnlyHoldings, platformOnlySales,
+                systemOnly, mismatches, warnings);
     }
 
     private UuFullJsonImportResult previewStream(InputStream input, User targetUser) throws IOException {
