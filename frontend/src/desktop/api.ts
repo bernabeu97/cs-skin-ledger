@@ -7,11 +7,14 @@ let csrfToken = ''
 
 export function normalizeBase(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed) return trimmed
+  // 兼容只填 IP/域名的输入(如 47.108.166.67、localhost:8080),自动补 http://
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
   try {
-    const url = new URL(trimmed)
-    return ['http:', 'https:'].includes(url.protocol) ? url.origin : trimmed
+    const url = new URL(withScheme)
+    return ['http:', 'https:'].includes(url.protocol) ? url.origin : withScheme
   } catch {
-    return trimmed
+    return withScheme
   }
 }
 

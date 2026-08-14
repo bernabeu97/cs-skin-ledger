@@ -11,6 +11,11 @@ describe('normalizeBase', () => {
     expect(normalizeBase(' http://localhost:8080/ '))
       .toBe('http://localhost:8080')
   })
+
+  it('adds http:// when only a bare host or IP is entered', () => {
+    expect(normalizeBase('47.108.166.67')).toBe('http://47.108.166.67')
+    expect(normalizeBase('localhost:8080')).toBe('http://localhost:8080')
+  })
 })
 
 describe('isSecureServer', () => {
