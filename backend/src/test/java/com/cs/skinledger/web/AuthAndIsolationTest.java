@@ -207,6 +207,17 @@ class AuthAndIsolationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void adminWithoutTotpCanUseBusinessApi() throws Exception {
+        User admin = saveUser("admin-no-totp", passwordEncoder.encode("admin-password-123"));
+        admin.setRole("ADMIN");
+        admin.setTotpEnabled(false);
+        userRepository.save(admin);
+        // TOTP 已改为可选：未绑定 TOTP 的管理员不再被拦截，可直接访问业务 API
+        mockMvc.perform(get("/api/lots").with(user("admin-no-totp").roles("ADMIN")))
+                .andExpect(status().isOk());
+    }
+
     private String credentials(String username, String password, String inviteCode) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
                 "username", username, "password", password, "inviteCode", inviteCode));

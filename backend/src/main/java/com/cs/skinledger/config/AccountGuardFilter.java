@@ -51,10 +51,6 @@ public class AccountGuardFilter extends OncePerRequestFilter {
                 reject(request, response, 403, "请先修改临时密码");
                 return;
             }
-            if ("ADMIN".equals(user.getRole()) && !Boolean.TRUE.equals(user.getTotpEnabled())) {
-                reject(request, response, 403, "管理员必须先启用双重验证");
-                return;
-            }
         }
         chain.doFilter(request, response);
     }

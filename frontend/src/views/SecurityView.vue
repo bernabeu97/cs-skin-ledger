@@ -10,6 +10,7 @@ const ui = useUiStore()
 const router = useRouter()
 const setup = ref<{ manualKey: string; provisioningUri: string } | null>(null)
 const recoveryCodes = ref<string[]>([])
+const totpPanel = ref(false)
 const totpCode = ref('')
 const totpPending = ref(false)
 const passwordPending = ref(false)
@@ -25,6 +26,18 @@ onMounted(async () => {
     error.value = errorMessage(e)
   }
 })
+
+/** 可选开启双重验证（管理员不再强制绑定） */
+async function openTotpSetup() {
+  totpPanel.value = true
+  if (setup.value) return
+  error.value = ''
+  try {
+    setup.value = await auth.setupTotp()
+  } catch (e) {
+    error.value = errorMessage(e)
+  }
+}
 
 async function confirmTotp() {
   if (totpPending.value) return
@@ -70,14 +83,14 @@ async function copy(text: string) {
       <div>
         <p class="eyebrow">ACCOUNT SECURITY</p>
         <h1>账号安全</h1>
-        <p>管理密码和双重验证。管理员必须完成验证器绑定后才能使用业务功能。</p>
+        <p>管理密码和双重验证。TOTP 为可选功能：开启后登录时需要输入验证码；未开启不影响使用业务功能。</p>
       </div>
       <span :class="auth.totpEnabled ? 'badge badge-success' : 'badge badge-muted'">{{ auth.totpEnabled ? '双重验证已开启' : '双重验证未开启' }}</span>
     </div>
 
     <p v-if="error" class="error-banner" role="alert"><span>{{ error }}</span></p>
 
-    <section v-if="setupNeeded || recoveryCodes.length" class="card security-card" aria-labelledby="totp-title">
+    <section v-if="setupNeeded || totpPanel || recoveryCodes.length" class="card security-card" aria-labelledby="totp-title">
       <div class="step-index">01</div>
       <div class="step-content">
         <h2 id="totp-title">绑定身份验证器</h2>
@@ -106,12 +119,15 @@ async function copy(text: string) {
           <div class="recovery-grid"><code v-for="code in recoveryCodes" :key="code">{{ code }}</code></div>
           <button class="btn" type="button" @click="copy(recoveryCodes.join('\n'))">复制全部恢复码</button>
         </div>
-        <p v-else class="muted">正在准备安全密钥…</p>
+        <div v-else class="totp-offer">
+          <p class="muted">双重验证未开启。开启后，每次登录都需要输入验证器中的 6 位动态码，并保存一次性恢复码。</p>
+          <button class="btn btn-primary" type="button" :disabled="totpPending" @click="openTotpSetup">开启双重验证</button>
+        </div>
       </div>
     </section>
 
     <section class="card security-card" aria-labelledby="password-title">
-      <div class="step-index">{{ setupNeeded ? '02' : '01' }}</div>
+      <div class="step-index">{{ setupNeeded || totpPanel || recoveryCodes.length ? '02' : '01' }}</div>
       <div class="step-content">
         <h2 id="password-title">{{ auth.passwordChangeRequired ? '设置新密码' : '修改密码' }}</h2>
         <p>{{ auth.passwordChangeRequired ? '管理员已重置此账号密码，继续使用前必须设置只有你知道的新密码。' : '修改后所有设备上的会话都会失效，需要重新登录。' }}</p>
@@ -150,6 +166,8 @@ details { margin: 9px 0 16px; color: var(--text-secondary); font-size: 12px; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-bottom: 14px; }
 .recovery-grid code { padding: 6px 8px; background: var(--surface-solid); border-radius: 4px; }
 .muted { color: var(--text-muted); }
+.totp-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.totp-offer .muted { margin: 0; }
 @media (max-width: 620px) {
   .page-heading { flex-direction: column; }
   .security-card { grid-template-columns: 1fr; padding: 18px; }

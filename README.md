@@ -26,7 +26,7 @@ $env:JAVA_HOME='D:\Java\jdk-21'
 & 'D:\Java\apache-maven\bin\mvn.cmd' -f backend\pom.xml spring-boot:run
 ```
 
-本地开发需要设置 `APP_ADMIN_USERNAME` 和至少 12 位的 `APP_ADMIN_PASSWORD`。首次启动创建管理员后，由管理员生成一次性邀请码；项目不开放自由注册。管理员必须绑定 TOTP，未登录访问业务 API 返回 401。
+本地开发需要设置 `APP_ADMIN_USERNAME` 和至少 12 位的 `APP_ADMIN_PASSWORD`。首次启动创建管理员后，由管理员生成一次性邀请码；项目不开放自由注册。未登录访问业务 API 返回 401。
 
 ## 启动前端
 
@@ -48,7 +48,7 @@ npm.cmd run dev
 - 行情自动化：后端定时刷新（环境变量 `APP_PRICE_REFRESH_INTERVAL_MINUTES` 开启）、网页轮询提醒横幅与标签页闪烁（系统通知依赖 HTTPS）
 - UU 同步：导入前「比对预览」（新增/重复/未匹配/忽略统计），确认后增量入库，幂等去重
 - 卖出校验：卖出数量不能超过当前持仓（含手续费成本）
-- 账号与安全：邀请制注册、PBKDF2 密码、管理员强制 TOTP、恢复码、登录限流、CSRF、会话失效、审计日志
+- 账号与安全：邀请制注册、PBKDF2 密码、TOTP 双重验证（可选）、恢复码、登录限流、CSRF、会话失效、审计日志
 - 管理：成员禁用/启用、临时密码、一次性邀请码、最近安全事件
 - 界面：CS 电竞风深浅主题（玻璃态卡片、荧光青/绿）、命令面板（Ctrl+K）、响应式桌面布局、移动端底部导航与表格固定首列/操作列
 

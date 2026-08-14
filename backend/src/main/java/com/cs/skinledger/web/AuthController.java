@@ -212,7 +212,8 @@ public class AuthController {
         }
 
         static AuthView from(User user) {
-            boolean adminSetup = "ADMIN".equals(user.getRole()) && !Boolean.TRUE.equals(user.getTotpEnabled());
+            // TOTP 已改为可选功能（管理员不再强制绑定）；用户仍可在「账号安全」页自行开启。
+            boolean adminSetup = false;
             return new AuthView(true, user.getUsername(), user.getRole(), Boolean.TRUE.equals(user.getTotpEnabled()),
                     adminSetup, Boolean.TRUE.equals(user.getMustChangePassword()));
         }
