@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build-and-deploy:
+    if: ${{ secrets.CLOUD_HOST != '' && secrets.CLOUD_USER != '' && secrets.CLOUD_SSH_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
