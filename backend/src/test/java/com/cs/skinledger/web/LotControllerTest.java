@@ -16,6 +16,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import com.cs.skinledger.service.LotWorkbookService;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -210,5 +211,119 @@ class LotControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.created").value(0))
                 .andExpect(jsonPath("$.skipped").value(1));
+    }
+
+    @Test
+    void pageReturnsPaginatedItemsAndTotal() throws Exception {
+        mockMvc.perform(post("/api/lots").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(buyBody("Page Knife A", "100", "2026-01-01T10:00:00")));
+        mockMvc.perform(post("/api/lots").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(buyBody("Page Knife B", "200", "2026-02-01T10:00:00")));
+        mockMvc.perform(post("/api/lots").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(buyBody("Page Knife C", "300", "2026-03-01T10:00:00")));
+
+        mockMvc.perform(get("/api/lots/page").param("page", "1").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2));
+
+        mockMvc.perform(get("/api/lots/page").param("page", "2").param("size", "2"))
+                .andExpect(jsonPath("$.items.length()").value(1));
+    }
+
+    @Test
+    void statsAndAggregateReportRoiAndWinRate() throws Exception {
+        String a = mockMvc.perform(post("/api/lots").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Stat Knife A", "100", "2026-01-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long idA = objectMapper.readTree(a).get("id").asLong();
+        mockMvc.perform(post("/api/lots").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(buyBody("Stat Knife B", "200", "2026-02-01T10:00:00")));
+        mockMvc.perform(post("/api/lots/" + idA + "/sell").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("sellPrice", "120", "fee", "0"))));
+
+        mockMvc.perform(get("/api/lots/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.soldCount").value(1))
+                .andExpect(jsonPath("$.winningSoldCount").value(1))
+                .andExpect(jsonPath("$.winRate").value(1.0))
+                .andExpect(jsonPath("$.realizedRoi").value(0.066667));
+
+        mockMvc.perform(get("/api/lots/aggregate").param("group_by", "item"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].realizedPnl").value(20.0))
+                .andExpect(jsonPath("$[0].buyCost").value(100.0));
+    }
+
+    @Test
+    void batchFillPriceAndBatchDeleteWork() throws Exception {
+        String a = mockMvc.perform(post("/api/lots").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Batch Knife A", "0", "2026-01-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long idA = objectMapper.readTree(a).get("id").asLong();
+        String b = mockMvc.perform(post("/api/lots").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody("Batch Knife B", "0", "2026-02-01T10:00:00")))
+                .andReturn().getResponse().getContentAsString();
+        long idB = objectMapper.readTree(b).get("id").asLong();
+
+        mockMvc.perform(post("/api/lots/batch/fill-price").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("ids", List.of(idA, idB), "buyPrice", "88.5"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(2));
+
+        mockMvc.perform(get("/api/lots"))
+                .andExpect(jsonPath("$[?(@.id == " + idA + ")].buyPrice").value(88.5));
+
+        mockMvc.perform(post("/api/lots/batch/delete").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("ids", List.of(idA, idB)))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(2));
+
+        mockMvc.perform(get("/api/lots")).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/api/lots/trash")).andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void uuFullJsonPreviewCountsNewAndDuplicateWithoutWriting() throws Exception {
+        String json = """
+                {"records":[
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"AK-47 | Hydroponic (Field-Tested)",
+                   "price":12.34,"orderNo":"B1","createOrderTime":1700000000000,
+                   "raw":{"finishOrderTime":1700000000000}},
+                  {"direction":"buy","recordType":"trade","status":"340","marketHashName":"AK-47 | Hydroponic (Field-Tested)",
+                   "price":12.34,"orderNo":"B2","createOrderTime":1700001000000,
+                   "raw":{"finishOrderTime":1700001000000}}
+                ]}
+                """;
+        MockMultipartFile file = new MockMultipartFile("file", "records.json", "application/json", json.getBytes());
+
+        mockMvc.perform(multipart("/api/sync/uu/preview-full-json").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.buyRecords").value(2))
+                .andExpect(jsonPath("$.holdingsImported").value(2))
+                .andExpect(jsonPath("$.holdingsSkippedDuplicates").value(0));
+
+        mockMvc.perform(get("/api/lots")).andExpect(jsonPath("$.length()").value(0));
+
+        mockMvc.perform(multipart("/api/sync/uu/import-full-json").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.holdingsImported").value(2));
+        mockMvc.perform(multipart("/api/sync/uu/preview-full-json").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.holdingsImported").value(0))
+                .andExpect(jsonPath("$.holdingsSkippedDuplicates").value(2));
     }
 }

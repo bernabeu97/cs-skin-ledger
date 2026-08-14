@@ -113,7 +113,7 @@ onMounted(load)
 .page-heading h1 { margin: 2px 0 4px; font-size: 25px; }
 .page-heading p:not(.eyebrow) { margin: 0; color: var(--text-secondary); }
 .eyebrow { margin: 0; color: var(--accent); font: 700 10px/1 var(--font-mono); letter-spacing: .14em; }
-.invite-callout { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 17px; margin-bottom: 22px; border: 1px solid #f0c36a; border-radius: var(--radius); background: #fff9e9; color: #563b00; }
+.invite-callout { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 17px; margin-bottom: 22px; border: 1px solid var(--warn-border); border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-text); }
 .invite-callout > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 14px; }
 .invite-callout code { font-size: 16px; letter-spacing: .06em; }
 .invite-callout span { grid-column: 1 / -1; font-size: 11px; }

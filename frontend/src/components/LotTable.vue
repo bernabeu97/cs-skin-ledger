@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Lot } from '../types'
 import { formatDateTime, formatMoney, formatQty, formatSignedMoney } from '../utils/format'
 
@@ -11,15 +12,21 @@ const props = defineProps<{
   sortDir: 'asc' | 'desc'
   visibleColumns: string[]
   highlightId?: number | null
+  selectedIds?: number[]
 }>()
 const emit = defineEmits<{
   (e: 'edit', lot: Lot): void
   (e: 'delete', lot: Lot): void
   (e: 'sell', lot: Lot): void
   (e: 'sort', key: SortKey): void
+  (e: 'toggleSelect', id: number): void
+  (e: 'toggleSelectAll'): void
 }>()
 
 const platformLabel: Record<string, string> = { steam: 'Steam', uu: 'UU', buff: 'BUFF' }
+const selectedSet = computed(() => new Set(props.selectedIds ?? []))
+const allChecked = computed(() => props.lots.length > 0 && props.lots.every(l => selectedSet.value.has(l.id)))
+const someChecked = computed(() => props.lots.some(l => selectedSet.value.has(l.id)) && !allChecked.value)
 
 function arrow(key: SortKey): string {
   if (props.sortKey !== key) return '↕'
@@ -32,6 +39,17 @@ function arrow(key: SortKey): string {
     <table class="data">
       <thead>
         <tr>
+          <th class="select-cell">
+            <input
+              type="checkbox"
+              class="row-check"
+              :checked="allChecked"
+              :indeterminate="someChecked"
+              aria-label="全选本页"
+              :disabled="loading || lots.length === 0"
+              @change="emit('toggleSelectAll')"
+            />
+          </th>
           <th v-if="visibleColumns.includes('item')">饰品</th>
           <th v-if="visibleColumns.includes('exterior')">磨损</th>
           <th v-if="visibleColumns.includes('floatValue')" class="num-head">磨损值</th>
@@ -57,6 +75,15 @@ function arrow(key: SortKey): string {
       </tbody>
       <tbody v-else>
         <tr v-for="lot in lots" :key="lot.id" :data-lot="lot.id" :class="{ sold: lot.status === 'SOLD', highlight: lot.id === props.highlightId }">
+          <td class="select-cell">
+            <input
+              type="checkbox"
+              class="row-check"
+              :checked="selectedSet.has(lot.id)"
+              :aria-label="`选择 ${lot.itemNameZh ?? lot.itemName}`"
+              @change="emit('toggleSelect', lot.id)"
+            />
+          </td>
           <td v-if="visibleColumns.includes('item')">{{ lot.itemNameZh ?? lot.itemName }}</td>
           <td v-if="visibleColumns.includes('exterior')">{{ lot.exterior ?? '-' }}</td>
           <td v-if="visibleColumns.includes('floatValue')" class="num">{{ lot.floatValue != null ? formatQty(lot.floatValue) : '-' }}</td>
@@ -94,6 +121,8 @@ th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 th.sortable.active { color: var(--accent); }
 th.sortable span { font-size: 10px; margin-left: 2px; opacity: .7; }
+.select-cell { width: 36px; text-align: center; }
+.row-check { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
 .num-head { text-align: right; }
 td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 tbody tr.sold td { color: var(--text-secondary); }

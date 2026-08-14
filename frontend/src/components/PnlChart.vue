@@ -4,6 +4,7 @@ import { BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useUiStore } from '../stores/ui'
 import type { PnlRow } from '../types'
 import { formatMoney, formatSignedMoney } from '../utils/format'
 
@@ -14,6 +15,12 @@ const el = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
 let chartEl: HTMLDivElement | null = null
+const ui = useUiStore()
+
+function cssVar(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
 
 function render() {
   if (!el.value) return
@@ -25,6 +32,11 @@ function render() {
     observer = new ResizeObserver(() => chart?.resize())
     observer.observe(chartEl)
   }
+  const up = cssVar('--accent', '#2563eb')
+  const down = cssVar('--danger', '#c62f3f')
+  const muted = cssVar('--text-muted', '#8a91a0')
+  const secondary = cssVar('--text-secondary', '#565d6b')
+  const border = cssVar('--border', '#eef0f3')
   chart?.setOption({
     tooltip: {
       trigger: 'axis',
@@ -34,25 +46,25 @@ function render() {
     xAxis: {
       type: 'category',
       data: props.rows.map(r => r.key),
-      axisLine: { lineStyle: { color: '#d0d5dd' } },
-      axisLabel: { color: '#565d6b', fontFamily: 'inherit' }
+      axisLine: { lineStyle: { color: border } },
+      axisLabel: { color: secondary, fontFamily: 'inherit' }
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: '#eef0f3' } },
-      axisLabel: { color: '#8a91a0', formatter: (v: number) => formatMoney(v) }
+      splitLine: { lineStyle: { color: border } },
+      axisLabel: { color: muted, formatter: (v: number) => formatMoney(v) }
     },
     series: [{
       type: 'bar',
       barMaxWidth: 36,
       data: props.rows.map(r => ({
         value: r.realizedPnl,
-        itemStyle: { color: r.realizedPnl >= 0 ? '#2563eb' : '#c62f3f', borderRadius: [3, 3, 0, 0] }
+        itemStyle: { color: r.realizedPnl >= 0 ? up : down, borderRadius: [3, 3, 0, 0] }
       })),
       label: {
         show: true,
         position: 'top',
-        color: '#565d6b',
+        color: secondary,
         fontSize: 11,
         formatter: (p: { value: number }) => formatSignedMoney(p.value)
       }
@@ -67,6 +79,7 @@ async function syncChart() {
 
 onMounted(syncChart)
 watch([() => props.loading, () => props.rows], syncChart, { deep: true, flush: 'post' })
+watch(() => ui.theme, syncChart)
 onBeforeUnmount(() => {
   observer?.disconnect()
   chart?.dispose()

@@ -170,7 +170,7 @@ public class PriceService {
         if (!uu) {
             messages.put("uu", "UU 直连需登录 token 文件（app.price.youpin.token-file），且可能被风控拦截。");
         }
-        return new PriceConfigView(csqaq, steam, uu, messages);
+        return new PriceConfigView(csqaq, steam, uu, props.getRefreshIntervalMinutes(), messages);
     }
 
     @Transactional(readOnly = true)

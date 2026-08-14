@@ -167,9 +167,21 @@ async function unbindToken() {
       <p v-if="tokenError" class="inline-error" role="alert">{{ tokenError }}</p>
     </div>
 
+    <div class="card form-panel">
+      <div class="section-heading">
+        <div>
+          <h3>行情定时刷新</h3>
+          <p class="page-desc">后端定时为所有成员刷新持仓行情并检测价格提醒。网页打开时会每分钟轮询提醒状态（当前公网 HTTP 下不支持系统通知，触发时会以页面横幅和标签页闪烁提示）。</p>
+        </div>
+        <span :class="(lotsStore.priceConfig?.refreshIntervalMinutes ?? 0) > 0 ? 'status-pill ok' : 'status-pill'">
+          {{ (lotsStore.priceConfig?.refreshIntervalMinutes ?? 0) > 0 ? `已开启 · 每 ${lotsStore.priceConfig!.refreshIntervalMinutes} 分钟` : '未开启' }}
+        </span>
+      </div>
+    </div>
+
     <div class="card form-panel about-panel">
       <div>
-        <h3>SkinLedger v0.2.0</h3>
+        <h3>SkinLedger v0.3.0</h3>
         <p class="page-desc">本服务使用 AGPL-3.0 开源许可证。你可以查看、下载并修改当前项目源代码。</p>
       </div>
       <a class="btn" href="https://github.com/bernabeu97/cs-skin-ledger" target="_blank" rel="noreferrer">查看源代码</a>
@@ -186,10 +198,10 @@ async function unbindToken() {
 .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; }
 .save-msg { font-size: 12px; color: var(--success); margin: 0; }
 .status-ok { color: var(--success); font-weight: 550; }
-.status-warn { color: #7a4f01; background: #fff7e6; border: 1px solid #f5c77b; border-radius: var(--radius-sm); padding: 8px 12px; display: inline-block; }
+.status-warn { color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius-sm); padding: 8px 12px; display: inline-block; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.status-pill { flex: none; padding: 4px 9px; border-radius: 999px; color: var(--text-secondary); background: #eef0f3; font-size: 11px; font-weight: 650; }
-.status-pill.ok { color: #176b43; background: #e8f7ef; }
+.status-pill { flex: none; padding: 4px 9px; border-radius: 999px; color: var(--text-secondary); background: var(--surface-muted); font-size: 11px; font-weight: 650; }
+.status-pill.ok { color: var(--success); background: var(--success-soft); }
 .token-current { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; margin-bottom: 14px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .token-current > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .token-actions { display: flex; align-items: center; gap: 8px; }
@@ -199,7 +211,7 @@ async function unbindToken() {
 .token-field { min-width: 0; }
 .token-input { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .bind-button { min-width: 112px; margin-bottom: 20px; }
-.inline-error { margin: 10px 0 0; padding: 8px 10px; color: var(--danger); background: #fff1f2; border: 1px solid #fecdd3; border-radius: var(--radius-sm); font-size: 12px; }
+.inline-error { margin: 10px 0 0; padding: 8px 10px; color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); border-radius: var(--radius-sm); font-size: 12px; }
 .about-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .about-panel .page-desc { margin-bottom: 0; }
 @media (max-width: 760px) { .form-grid { grid-template-columns: 1fr; } }

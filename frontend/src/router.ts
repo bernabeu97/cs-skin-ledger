@@ -1,25 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardView from './views/DashboardView.vue'
-import TradesView from './views/TradesView.vue'
-import OtherCostsView from './views/OtherCostsView.vue'
-import SettingsView from './views/SettingsView.vue'
-import MarketView from './views/MarketView.vue'
-import LoginView from './views/LoginView.vue'
-import SecurityView from './views/SecurityView.vue'
-import AdminView from './views/AdminView.vue'
 import { useAuthStore } from './stores/auth'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
-    { path: '/security', name: 'security', component: SecurityView },
-    { path: '/', name: 'dashboard', component: DashboardView },
-    { path: '/trades', name: 'trades', component: TradesView },
-    { path: '/costs', name: 'costs', component: OtherCostsView },
-    { path: '/market', name: 'market', component: MarketView },
-    { path: '/settings', name: 'settings', component: SettingsView },
-    { path: '/admin', name: 'admin', component: AdminView, meta: { admin: true } }
+    { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
+    { path: '/security', name: 'security', component: () => import('./views/SecurityView.vue') },
+    { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue') },
+    { path: '/trades', name: 'trades', component: () => import('./views/TradesView.vue') },
+    { path: '/costs', name: 'costs', component: () => import('./views/OtherCostsView.vue') },
+    { path: '/market', name: 'market', component: () => import('./views/MarketView.vue') },
+    { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
+    { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue'), meta: { admin: true } }
   ]
 })
 

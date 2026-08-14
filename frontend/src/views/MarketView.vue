@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import ItemSelect from '../components/ItemSelect.vue'
 import MarketLineChart from '../components/MarketLineChart.vue'
 import MarketCandlestickChart from '../components/MarketCandlestickChart.vue'
@@ -13,6 +14,7 @@ import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 const lots = useLotsStore()
 const market = useMarketStore()
 const ui = useUiStore()
+const route = useRoute()
 
 const tab = ref<'holdings' | 'watchlist' | 'market'>('holdings')
 const period = ref<MarketPeriod>('24h')
@@ -137,7 +139,12 @@ async function refreshPrices() {
 }
 
 watch(selectedItem, () => { selectedExterior.value = '' })
-onMounted(load)
+onMounted(async () => {
+  await load()
+  if (route.query.refresh === '1') {
+    await refreshPrices()
+  }
+})
 </script>
 
 <template>
@@ -314,7 +321,7 @@ onMounted(load)
 .market-tabs > button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .periods { margin-left: auto; display: flex; gap: 2px; }
 .periods button { padding: 5px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; }
-.periods button.active { color: var(--accent); background: var(--accent-soft); border-color: #c7d9fb; }
+.periods button.active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
 .metric-block { padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--border); }
 .metric-block:last-child { border-right: 0; }
@@ -357,4 +364,5 @@ onMounted(load)
   .metric-block:last-child { border-bottom: 0; }
   .add-watch { grid-template-columns: 1fr; }
 }
+.market-periods button.active { border-color: var(--accent); }
 </style>

@@ -69,7 +69,44 @@ public class UuFullJsonImportService {
         }
     }
 
+    /** 预览：解析文件并统计新增/重复/未匹配，不写入任何数据。 */
+    public UuFullJsonImportResult previewFile(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("请选择悠悠有品全量记录 JSON 文件");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("JSON 文件不能超过 64MB");
+        }
+        try (InputStream input = file.getInputStream()) {
+            return previewStream(input, null);
+        }
+    }
+
+    private UuFullJsonImportResult previewStream(InputStream input, User targetUser) throws IOException {
+        ParsedBundle bundle = parseStream(input);
+        UuImportResult imported = targetUser == null
+                ? uuImportService.preview(bundle.request())
+                : uuImportService.previewForUser(bundle.request(), targetUser);
+        return new UuFullJsonImportResult(
+                bundle.totalRecords(), bundle.buyRecords(), bundle.sellRecords(), bundle.matchedSales(),
+                bundle.unmatchedSales(), bundle.remainingHoldings(), bundle.correctedPriceRecords(),
+                bundle.ignoredRecords(), imported.holdingsImported(), imported.holdingsSkippedDuplicates(),
+                imported.salesImported(), imported.salesSkippedDuplicates(), bundle.warnings(), imported.errors());
+    }
+
     private UuFullJsonImportResult importStream(InputStream input, User targetUser) throws IOException {
+        ParsedBundle bundle = parseStream(input);
+        UuImportResult imported = targetUser == null
+                ? uuImportService.importData(bundle.request())
+                : uuImportService.importDataForUser(bundle.request(), targetUser);
+        return new UuFullJsonImportResult(
+                bundle.totalRecords(), bundle.buyRecords(), bundle.sellRecords(), bundle.matchedSales(),
+                bundle.unmatchedSales(), bundle.remainingHoldings(), bundle.correctedPriceRecords(),
+                bundle.ignoredRecords(), imported.holdingsImported(), imported.holdingsSkippedDuplicates(),
+                imported.salesImported(), imported.salesSkippedDuplicates(), bundle.warnings(), imported.errors());
+    }
+
+    private ParsedBundle parseStream(InputStream input) throws IOException {
         JsonNode root = objectMapper.readTree(input);
         JsonNode recordsNode = root.path("records");
         if (!root.isObject() || !recordsNode.isArray()) {
@@ -149,14 +186,10 @@ public class UuFullJsonImportService {
             warnings.add(unmatchedSales + " 条卖出记录在文件内找不到更早的同名买入记录，买入价记为 0，需后续补填");
         }
 
-        UuImportRequest request = new UuImportRequest(holdings, sales);
-        UuImportResult imported = targetUser == null
-                ? uuImportService.importData(request)
-                : uuImportService.importDataForUser(request, targetUser);
-        return new UuFullJsonImportResult(
+        return new ParsedBundle(
+                new UuImportRequest(holdings, sales),
                 recordsNode.size(), buys.size(), sells.size(), matchedSales, unmatchedSales, remaining.size(),
-                correctedPrices, ignored, imported.holdingsImported(), imported.holdingsSkippedDuplicates(),
-                imported.salesImported(), imported.salesSkippedDuplicates(), warnings, imported.errors());
+                correctedPrices, ignored, warnings);
     }
 
     private Parsed parseRow(JsonNode node, int index, String direction, Map<String, Integer> orderOrdinals) {
@@ -314,6 +347,19 @@ public class UuFullJsonImportService {
     }
 
     private record Parsed(ParsedRow row, boolean priceCorrected) {
+    }
+
+    private record ParsedBundle(
+            UuImportRequest request,
+            int totalRecords,
+            int buyRecords,
+            int sellRecords,
+            int matchedSales,
+            int unmatchedSales,
+            int remainingHoldings,
+            int correctedPriceRecords,
+            int ignoredRecords,
+            List<String> warnings) {
     }
 
     private record ParsedRow(

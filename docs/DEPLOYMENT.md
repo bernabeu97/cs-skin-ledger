@@ -102,3 +102,22 @@ docker compose -f docker-compose.prod.yml logs --since=30m --tail=300
 ## 8. HTTPS 后续切换
 
 取得域名并解析到服务器后，在入口代理配置有效证书和 80→443 跳转，将 `APP_SECURE_COOKIES=true`，只开放 80/443，并重新验证登录、TOTP、导入、下载和桌面端连接。完成前，HTTP 风险始终保留。
+
+## 9. Git 方式部署（推荐，v0.3.0+）
+
+服务器内存较小（约 1 GiB），**不要在服务器上构建**。Git 部署采用「GitHub Actions 构建产物 + SSH 推送到服务器」：
+
+1. 在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
+   - `CLOUD_HOST`：服务器公网 IP
+   - `CLOUD_USER`：SSH 用户（如 `admin`）
+   - `CLOUD_SSH_KEY`：部署私钥（`ssh-keygen -t ed25519` 生成，私钥内容作为 Secret；公钥追加到服务器 `~/.ssh/authorized_keys`，建议单独密钥只读权限）
+2. 推送 `v*` 标签（如 `v0.3.0`）触发 `.github/workflows/deploy-cloud.yml`：
+   - 后端 `mvn test` + `package`；前端 `typecheck` + `vitest` + `build`
+   - 上传 jar、前端包、部署脚本到服务器 `/tmp`
+   - 执行 `scripts/cloud-deploy.sh`：备份 → 替换 jar/前端 → systemd 重启 + nginx reload → 健康检查 → 失败自动回滚
+3. 手动部署同样使用该脚本：
+   ```bash
+   scp backend/target/skin-ledger-<version>.jar frontend.tar.gz scripts/cloud-deploy.sh admin@服务器:/tmp/
+   ssh admin@服务器 'sudo bash /tmp/cloud-deploy.sh <release> /tmp/skin-ledger-<version>.jar /tmp/frontend.tar.gz'
+   ```
+4. 定时刷新行情：在 `/opt/cs-skin-ledger/app.env` 写入 `APP_PRICE_REFRESH_INTERVAL_MINUTES=30` 并重启服务（0 表示关闭）。

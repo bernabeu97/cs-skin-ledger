@@ -57,7 +57,7 @@ async function submit() {
       </div>
 
       <div class="auth-panel">
-        <div class="auth-brand">CS 饰品账本</div>
+        <div class="auth-brand"><span class="brand-mark">SL</span><span>SkinLedger · CS 饰品账本</span></div>
         <h2 id="auth-title">{{ isRegister ? '创建账号' : '欢迎回来' }}</h2>
         <p class="auth-desc">{{ isRegister ? '使用管理员发放的一次性邀请码注册。' : '登录后继续管理你的饰品资产。' }}</p>
 
@@ -101,16 +101,36 @@ async function submit() {
 </template>
 
 <style scoped>
-.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 28px 20px; background: radial-gradient(circle at 12% 8%, #172554 0, #0b1220 32%, #080b12 72%); }
-.auth-shell { width: min(100%, 940px); display: grid; grid-template-columns: 1.15fr .85fr; overflow: hidden; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; background: rgba(15,23,42,.76); box-shadow: 0 28px 90px rgba(0,0,0,.38); }
-.auth-intro { display: flex; flex-direction: column; justify-content: center; padding: 54px; color: #fff; background: linear-gradient(145deg, rgba(37,99,235,.24), rgba(15,23,42,.25)); }
-.eyebrow { margin: 0 0 18px; color: #93c5fd; font: 700 12px/1 var(--font-mono); letter-spacing: .18em; }
+.auth-page {
+  min-height: 100vh; display: grid; place-items: center; padding: 28px 20px;
+  background:
+    radial-gradient(900px 480px at 12% 8%, rgba(45,212,191,.16) 0%, transparent 55%),
+    radial-gradient(1000px 600px at 88% 92%, rgba(37,99,235,.14) 0%, transparent 55%),
+    #05080f;
+}
+.auth-shell {
+  width: min(100%, 940px); display: grid; grid-template-columns: 1.15fr .85fr; overflow: hidden;
+  border: 1px solid rgba(148,163,184,.16); border-radius: 20px;
+  background: rgba(17,26,41,.62); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 32px 100px rgba(0,0,0,.5), 0 0 60px rgba(45,212,191,.06);
+}
+.auth-intro {
+  display: flex; flex-direction: column; justify-content: center; padding: 54px; color: #fff;
+  background: linear-gradient(160deg, rgba(45,212,191,.14), rgba(17,26,41,.1) 45%, rgba(37,99,235,.10));
+}
+.eyebrow { margin: 0 0 18px; color: var(--accent); font: 700 12px/1 var(--font-mono); letter-spacing: .2em; }
 .auth-intro h1 { max-width: 520px; margin: 0 0 16px; font-size: clamp(30px, 4.2vw, 48px); line-height: 1.13; letter-spacing: -.04em; }
-.auth-intro > p:not(.eyebrow) { max-width: 500px; margin: 0; color: #b9c3d5; font-size: 15px; }
+.auth-intro > p:not(.eyebrow) { max-width: 500px; margin: 0; color: #aab6c8; font-size: 15px; }
 .trust-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; }
-.trust-row span { padding: 5px 9px; border: 1px solid rgba(147,197,253,.28); border-radius: 999px; color: #cbdcf8; font-size: 11px; }
+.trust-row span { padding: 5px 10px; border: 1px solid rgba(45,212,191,.28); border-radius: 999px; color: #a7f3e6; background: rgba(45,212,191,.06); font-size: 11px; }
 .auth-panel { padding: 38px 34px; background: var(--surface); }
-.auth-brand { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.auth-brand { display: flex; align-items: center; gap: 9px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.brand-mark {
+  display: grid; place-items: center; width: 30px; height: 30px; color: #04120f;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  border-radius: 9px; font: 800 11px/1 var(--font-mono); letter-spacing: .03em;
+  box-shadow: 0 0 18px var(--accent-glow);
+}
 h2 { margin: 8px 0 5px; font-size: 25px; }
 .auth-desc { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; }
 .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; margin-bottom: 20px; border-radius: 9px; background: var(--surface-muted); }
@@ -124,7 +144,7 @@ h2 { margin: 8px 0 5px; font-size: 25px; }
 @media (max-width: 760px) {
   .auth-page { padding: 18px 12px; }
   .auth-shell { grid-template-columns: 1fr; }
-  .auth-intro { padding: 28px 24px; }
+  .auth-intro { padding: 28px 24px; background: linear-gradient(160deg, rgba(45,212,191,.12), rgba(17,26,41,.2)); }
   .auth-intro h1 { font-size: 27px; }
   .auth-intro > p:not(.eyebrow), .trust-row { display: none; }
   .auth-panel { padding: 28px 22px; }

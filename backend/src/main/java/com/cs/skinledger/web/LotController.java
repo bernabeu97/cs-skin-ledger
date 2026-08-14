@@ -1,10 +1,15 @@
 package com.cs.skinledger.web;
 
 import com.cs.skinledger.domain.LotStatus;
+import com.cs.skinledger.dto.AggregateRow;
+import com.cs.skinledger.dto.BatchFillPriceRequest;
+import com.cs.skinledger.dto.BatchIdsRequest;
 import com.cs.skinledger.dto.LotCreateRequest;
 import com.cs.skinledger.dto.LotFilter;
+import com.cs.skinledger.dto.LotPage;
 import com.cs.skinledger.dto.LotResponse;
 import com.cs.skinledger.dto.LotSellRequest;
+import com.cs.skinledger.dto.LotStats;
 import com.cs.skinledger.dto.LotSummary;
 import com.cs.skinledger.dto.PnlGroupBy;
 import com.cs.skinledger.dto.PnlRow;
@@ -30,7 +35,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/lots")
@@ -49,6 +59,28 @@ public class LotController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         return lotService.list(new LotFilter(q, status, platform, from, to));
+    }
+
+    @GetMapping("/page")
+    public LotPage page(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) LotStatus status,
+            @RequestParam(required = false) String platform,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return lotService.page(new LotFilter(q, status, platform, from, to), page, size);
+    }
+
+    @GetMapping("/stats")
+    public LotStats stats() {
+        return lotService.stats();
+    }
+
+    @GetMapping("/aggregate")
+    public List<AggregateRow> aggregate(@RequestParam(value = "group_by", defaultValue = "item") PnlGroupBy groupBy) {
+        return lotService.aggregate(groupBy);
     }
 
     @GetMapping("/{id}")
@@ -80,6 +112,18 @@ public class LotController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/batch/fill-price")
+    public ResponseEntity<Map<String, Integer>> batchFillPrice(@Valid @RequestBody BatchFillPriceRequest req) {
+        int updated = lotService.batchFillBuyPrice(req.ids(), req.buyPrice());
+        return ResponseEntity.ok(Map.of("updated", updated));
+    }
+
+    @PostMapping("/batch/delete")
+    public ResponseEntity<Map<String, Integer>> batchDelete(@Valid @RequestBody BatchIdsRequest req) {
+        int deleted = lotService.batchDelete(req.ids());
+        return ResponseEntity.ok(Map.of("deleted", deleted));
+    }
+
     @GetMapping("/trash")
     public List<LotResponse> trash() {
         return lotService.trash();
@@ -107,8 +151,13 @@ public class LotController {
     }
 
     @GetMapping("/export")
-    public ResponseEntity<byte[]> export(@RequestParam(defaultValue = "csv") String format) throws IOException {
-        byte[] body = lotExportService.export(format);
+    public ResponseEntity<byte[]> export(@RequestParam(defaultValue = "csv") String format,
+                                         @RequestParam(required = false) String ids) throws IOException {
+        Set<Long> idSet = ids == null || ids.isBlank()
+                ? Collections.emptySet()
+                : Arrays.stream(ids.split(",")).map(String::trim).filter(s -> !s.isBlank())
+                        .map(Long::valueOf).collect(Collectors.toSet());
+        byte[] body = lotExportService.export(format, idSet);
         String ext = "xlsx".equals(format) ? "xlsx" : format;
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=lots." + ext)

@@ -7,6 +7,7 @@ export interface ToastItem {
   id: number
   type: ToastType
   message: string
+  action?: { label: string; onClick: () => void }
 }
 
 export const useUiStore = defineStore('ui', () => {
@@ -17,9 +18,10 @@ export const useUiStore = defineStore('ui', () => {
 
   document.documentElement.dataset.theme = theme.value
 
-  function toast(type: ToastType, message: string, duration = 3500) {
+  function toast(type: ToastType, message: string, duration = 3500, action?: ToastItem['action']) {
     const id = nextId++
-    toasts.value.push({ id, type, message })
+    toasts.value.push({ id, type, message, action })
+    if (action) duration = Math.max(duration, 6000)
     window.setTimeout(() => dismiss(id), duration)
   }
 

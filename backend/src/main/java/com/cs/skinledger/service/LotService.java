@@ -4,10 +4,13 @@ import com.cs.skinledger.domain.Item;
 import com.cs.skinledger.domain.Lot;
 import com.cs.skinledger.domain.LotStatus;
 import com.cs.skinledger.domain.User;
+import com.cs.skinledger.dto.AggregateRow;
 import com.cs.skinledger.dto.LotCreateRequest;
 import com.cs.skinledger.dto.LotFilter;
+import com.cs.skinledger.dto.LotPage;
 import com.cs.skinledger.dto.LotResponse;
 import com.cs.skinledger.dto.LotSellRequest;
+import com.cs.skinledger.dto.LotStats;
 import com.cs.skinledger.dto.LotSummary;
 import com.cs.skinledger.dto.PnlGroupBy;
 import com.cs.skinledger.dto.PnlRow;
@@ -15,6 +18,8 @@ import com.cs.skinledger.repository.ItemRepository;
 import com.cs.skinledger.repository.LotRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -22,6 +27,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.YearMonth;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -149,6 +155,122 @@ public class LotService {
         return lotRepository.findAll(spec, Sort.by("buyTime").descending()).stream()
                 .map(LotResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public LotPage page(LotFilter filter, int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        Specification<Lot> spec = filter == null
+                ? (root, query, cb) -> cb.equal(root.get("user").get("id"), currentUser.id())
+                : buildSpec(filter);
+        Page<Lot> result = lotRepository.findAll(spec,
+                PageRequest.of(safePage - 1, safeSize, Sort.by("buyTime").descending()));
+        return new LotPage(
+                result.getContent().stream().map(LotResponse::from).toList(),
+                result.getTotalElements(),
+                safePage,
+                safeSize,
+                result.getTotalPages());
+    }
+
+    @Transactional(readOnly = true)
+    public LotStats stats() {
+        List<Lot> lots = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id());
+        BigDecimal totalBuyCost = BigDecimal.ZERO;
+        BigDecimal realized = BigDecimal.ZERO;
+        int holding = 0;
+        int sold = 0;
+        int winningSold = 0;
+        for (Lot lot : lots) {
+            BigDecimal cost = lot.getQuantity().multiply(lot.getBuyPrice());
+            totalBuyCost = totalBuyCost.add(cost);
+            if (lot.getStatus() == LotStatus.SOLD) {
+                BigDecimal profit = lot.getProfit() == null ? BigDecimal.ZERO : lot.getProfit();
+                realized = realized.add(profit);
+                sold++;
+                if (profit.signum() > 0) {
+                    winningSold++;
+                }
+            } else {
+                holding++;
+            }
+        }
+        BigDecimal realizedRoi = totalBuyCost.signum() == 0
+                ? BigDecimal.ZERO
+                : realized.divide(totalBuyCost, 6, RoundingMode.HALF_UP);
+        double winRate = sold == 0 ? 0d : (double) winningSold / sold;
+        return new LotStats(realizedRoi, winRate, sold, winningSold, lots.size(), holding);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AggregateRow> aggregate(PnlGroupBy groupBy) {
+        if (groupBy != PnlGroupBy.item && groupBy != PnlGroupBy.category) {
+            throw new IllegalArgumentException("aggregate 仅支持 item/category 分组");
+        }
+        List<Lot> lots = lotRepository.findByUserIdAndDeletedAtIsNullOrderByBuyTimeAsc(currentUser.id());
+        Map<String, BigDecimal> realized = new LinkedHashMap<>();
+        Map<String, BigDecimal> buyCost = new LinkedHashMap<>();
+        Map<String, Integer> soldCount = new LinkedHashMap<>();
+        Map<String, Integer> winningSold = new LinkedHashMap<>();
+        for (Lot lot : lots) {
+            String key = groupKey(lot, groupBy);
+            buyCost.merge(key, lot.getQuantity().multiply(lot.getBuyPrice()), BigDecimal::add);
+            if (lot.getStatus() == LotStatus.SOLD) {
+                BigDecimal profit = lot.getProfit() == null ? BigDecimal.ZERO : lot.getProfit();
+                realized.merge(key, profit, BigDecimal::add);
+                soldCount.merge(key, 1, Integer::sum);
+                if (profit.signum() > 0) {
+                    winningSold.merge(key, 1, Integer::sum);
+                }
+            }
+        }
+        return realized.entrySet().stream()
+                .map(e -> new AggregateRow(
+                        e.getKey(),
+                        e.getValue(),
+                        buyCost.getOrDefault(e.getKey(), BigDecimal.ZERO),
+                        soldCount.getOrDefault(e.getKey(), 0),
+                        winningSold.getOrDefault(e.getKey(), 0)))
+                .sorted((a, b) -> b.realizedPnl().compareTo(a.realizedPnl()))
+                .toList();
+    }
+
+    @Transactional
+    public int batchFillBuyPrice(List<Long> ids, BigDecimal buyPrice) {
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("请选择要补填的批次");
+        }
+        if (buyPrice == null || buyPrice.signum() < 0) {
+            throw new IllegalArgumentException("买入价不能为负");
+        }
+        int updated = 0;
+        for (Long id : ids) {
+            Lot lot = ownedLot(id);
+            lot.setBuyPrice(buyPrice);
+            if (lot.getStatus() == LotStatus.SOLD) {
+                recomputeSell(lot);
+            }
+            lotRepository.save(lot);
+            updated++;
+        }
+        return updated;
+    }
+
+    @Transactional
+    public int batchDelete(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("请选择要删除的记录");
+        }
+        int deleted = 0;
+        LocalDateTime now = LocalDateTime.now();
+        for (Long id : ids) {
+            Lot lot = ownedLot(id);
+            lot.setDeletedAt(now);
+            lotRepository.save(lot);
+            deleted++;
+        }
+        return deleted;
     }
 
     @Transactional(readOnly = true)

@@ -60,6 +60,24 @@ const priceMessageIsWarning = computed(() => priceMessage.value.includes('未填
 /** 总盈亏 = 饰品已实现盈亏 + 其他收支净额 */
 const totalPnl = computed(() => (store.summary?.realizedProfit ?? 0) + (costsStore.summary?.net ?? 0))
 const totalPnlText = computed(() => (holdingCount.value > 0 && !hasAnyPrice.value) ? '-' : formatSignedMoney(totalPnl.value))
+const totalRoi = computed(() => {
+  const invested = store.summary?.totalBuyCost ?? 0
+  if (invested <= 0) return null
+  const pnl = (store.summary?.realizedProfit ?? 0) + (store.valuation?.unrealizedPnl ?? 0)
+  return pnl / invested
+})
+const realizedRoi = computed(() => {
+  const invested = store.summary?.totalBuyCost ?? 0
+  if (invested <= 0) return null
+  return (store.summary?.realizedProfit ?? 0) / invested
+})
+const winRate = computed(() => store.stats?.winRate ?? null)
+const topItems = computed(() => (store.aggregate ?? []).slice(0, 10))
+
+function percent(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return '-'
+  return `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`
+}
 
 const priceHint = computed(() => {
   if (store.priceConfig?.csqaqConfigured) return ''
@@ -76,7 +94,9 @@ async function loadAll() {
       store.loadLots({ status: 'HOLDING' }),
       store.loadValuation(),
       store.loadPriceConfig(),
-      costsStore.loadSummary()
+      costsStore.loadSummary(),
+      store.loadStats(),
+      store.loadAggregate('item')
     ])
   } finally {
     refreshing.value = false
@@ -191,6 +211,21 @@ onMounted(loadAll)
         </div>
         <span class="metric-sub">当前市值 − 持仓成本（统一 UU 价）</span>
       </div>
+      <div class="card metric">
+        <span class="metric-label">总 ROI</span>
+        <div class="metric-value num" :class="(totalRoi ?? 0) >= 0 ? 'up' : 'down'">{{ percent(totalRoi) }}</div>
+        <span class="metric-sub">(已实现 + 浮动) ÷ 总买入成本</span>
+      </div>
+      <div class="card metric">
+        <span class="metric-label">已实现 ROI</span>
+        <div class="metric-value num" :class="(realizedRoi ?? 0) >= 0 ? 'up' : 'down'">{{ percent(realizedRoi) }}</div>
+        <span class="metric-sub">已实现盈亏 ÷ 总买入成本</span>
+      </div>
+      <div class="card metric">
+        <span class="metric-label">胜率</span>
+        <div class="metric-value num">{{ winRate == null ? '-' : Math.round(winRate * 100) + '%' }}</div>
+        <span class="metric-sub">盈利卖出批次 ÷ 已卖出批次{{ store.stats ? `（${store.stats.winningSoldCount}/${store.stats.soldCount}）` : '' }}</span>
+      </div>
     </div>
 
     <div class="chart-bar">
@@ -260,6 +295,31 @@ onMounted(loadAll)
       <p>当前没有待卖出的持仓，去饰品账本录入买入。</p>
       <router-link to="/trades" class="btn btn-primary">前往饰品账本</router-link>
     </div>
+
+    <div class="section-head top-head">
+      <h2>单品盈亏 TOP10</h2>
+      <router-link to="/trades" class="top-more">账本分组汇总 →</router-link>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>饰品</th><th class="num-head">已实现盈亏</th><th class="num-head">买入成本</th><th class="num-head">卖出笔数</th><th class="num-head">胜率</th></tr></thead>
+        <tbody v-if="store.loading">
+          <tr><td colspan="5"><div class="skeleton" style="height:14px;width:100%"></div></td></tr>
+        </tbody>
+        <tbody v-else>
+          <tr v-for="row in topItems" :key="row.key">
+            <td class="top-name" :title="row.key">{{ row.key }}</td>
+            <td class="num" :class="row.realizedPnl >= 0 ? 'up' : 'down'">{{ formatSignedMoney(row.realizedPnl) }}</td>
+            <td class="num">{{ formatMoney(row.buyCost) }}</td>
+            <td class="num">{{ row.soldCount }}</td>
+            <td class="num">{{ row.soldCount ? Math.round((row.winningSoldCount / row.soldCount) * 100) + '%' : '-' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="!store.loading && topItems.length === 0" class="empty-state compact">
+      <p>还没有已卖出的记录，卖出后会在这里看到单品盈亏排行。</p>
+    </div>
   </div>
 </template>
 
@@ -269,16 +329,16 @@ onMounted(loadAll)
 .head-actions { display: inline-flex; gap: 8px; margin-bottom: 16px; }
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
 .metric { padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.metric-primary { background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); border-color: #c7d9fb; }
+.metric-primary { background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); border-color: var(--accent-glow); }
 .metric-label { font-size: 12px; font-weight: 550; color: var(--text-secondary); }
 .metric-value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
 .metric-sub { font-size: 12px; color: var(--text-muted); }
 .metric-sub b { font-weight: 600; }
 .up { color: var(--success); }
 .down { color: var(--danger); }
-.hint-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid #c7d9fb; color: var(--text-secondary); font-size: 13px; }
-.hint-banner.ok { background: var(--success-soft); border-color: #b8e3c6; }
-.hint-banner.warn { background: #fff7e6; border-color: #f5c77b; color: #7a4f01; }
+.hint-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-glow); color: var(--text-secondary); font-size: 13px; }
+.hint-banner.ok { background: var(--success-soft); border-color: var(--success); }
+.hint-banner.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
 .chart-bar { position: relative; }
@@ -291,6 +351,10 @@ table.data td.up { color: var(--success); font-weight: 600; }
 table.data td.down { color: var(--danger); font-weight: 600; }
 .text-muted { color: var(--text-muted); }
 .row-actions { text-align: right; white-space: nowrap; }
+.top-head { margin-top: 26px; }
+.top-more { font-size: 12px; }
+.top-name { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.empty-state.compact { padding: 18px; }
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
 }

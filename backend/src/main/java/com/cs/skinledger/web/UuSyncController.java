@@ -37,4 +37,10 @@ public class UuSyncController {
     public UuFullJsonImportResult importFullJson(@RequestParam("file") MultipartFile file) throws IOException {
         return uuFullJsonImportService.importFile(file);
     }
+
+    /** 比对预览：解析全量记录 JSON，统计新增/重复/未匹配，不写入数据。 */
+    @PostMapping(value = "/preview-full-json", consumes = "multipart/form-data")
+    public UuFullJsonImportResult previewFullJson(@RequestParam("file") MultipartFile file) throws IOException {
+        return uuFullJsonImportService.previewFile(file);
+    }
 }

@@ -74,6 +74,31 @@ export interface LotSummary {
   soldCount: number
 }
 
+export interface LotPage {
+  items: Lot[]
+  total: number
+  page: number
+  size: number
+  totalPages: number
+}
+
+export interface LotStats {
+  realizedRoi: number
+  winRate: number
+  soldCount: number
+  winningSoldCount: number
+  lotCount: number
+  holdingCount: number
+}
+
+export interface AggregateRow {
+  key: string
+  realizedPnl: number
+  buyCost: number
+  soldCount: number
+  winningSoldCount: number
+}
+
 export interface PnlRow {
   key: string
   realizedPnl: number
@@ -151,6 +176,7 @@ export interface PriceConfigView {
   csqaqConfigured: boolean
   steamDirectEnabled: boolean
   youpinDirectEnabled: boolean
+  refreshIntervalMinutes: number
   messages: Record<string, string>
 }
 

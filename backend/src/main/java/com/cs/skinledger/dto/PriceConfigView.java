@@ -9,5 +9,6 @@ public record PriceConfigView(
         boolean csqaqConfigured,
         boolean steamDirectEnabled,
         boolean youpinDirectEnabled,
+        long refreshIntervalMinutes,
         Map<String, String> messages) {
 }

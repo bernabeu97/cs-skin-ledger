@@ -145,10 +145,10 @@ details { margin: 9px 0 16px; color: var(--text-secondary); font-size: 12px; }
 .password-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 13px; }
 .password-form label:first-child { grid-column: 1 / -1; }
 .field small { color: var(--text-muted); font-size: 11px; }
-.recovery-box { padding: 16px; border: 1px solid #f0c36a; border-radius: var(--radius); background: #fff9e9; color: #563b00; }
+.recovery-box { padding: 16px; border: 1px solid var(--warn-border); border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-text); }
 .recovery-box p { margin: 5px 0 12px; font-size: 12px; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-bottom: 14px; }
-.recovery-grid code { padding: 6px 8px; background: rgba(255,255,255,.65); border-radius: 4px; }
+.recovery-grid code { padding: 6px 8px; background: var(--surface-solid); border-radius: 4px; }
 .muted { color: var(--text-muted); }
 @media (max-width: 620px) {
   .page-heading { flex-direction: column; }

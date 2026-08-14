@@ -10,6 +10,9 @@ const ui = useUiStore()
       <div v-for="t in ui.toasts" :key="t.id" class="toast" :class="`toast-${t.type}`" role="status">
         <span class="toast-dot" aria-hidden="true"></span>
         <span class="toast-msg">{{ t.message }}</span>
+        <button v-if="t.action" type="button" class="toast-action" @click="t.action!.onClick(); ui.dismiss(t.id)">
+          {{ t.action.label }}
+        </button>
         <button type="button" class="toast-close" aria-label="关闭" @click="ui.dismiss(t.id)">×</button>
       </div>
     </TransitionGroup>
@@ -37,6 +40,11 @@ const ui = useUiStore()
 .toast-msg { flex: 1; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .toast-close { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 .toast-close:hover { color: var(--text); background: rgba(16,24,40,.06); }
+.toast-action {
+  flex: none; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent);
+  border-radius: var(--radius-sm); padding: 3px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.toast-action:hover { background: var(--accent); color: #fff; }
 .toast-enter-active, .toast-leave-active { transition: all .18s ease; }
 .toast-enter-from { opacity: 0; transform: translateY(-6px); }
 .toast-leave-to { opacity: 0; transform: translateX(10px); }

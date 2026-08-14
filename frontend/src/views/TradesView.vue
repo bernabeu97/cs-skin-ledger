@@ -13,7 +13,7 @@ import { useAlertsStore } from '../stores/alerts'
 import { useUiStore } from '../stores/ui'
 import { formatDateTime, formatMoney, formatSignedMoney } from '../utils/format'
 import { useColumnVisibility } from '../utils/columnVisibility'
-import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert } from '../types'
+import type { Item, Lot, LotCreateRequest, LotSellRequest, PriceAlert, UuFullJsonImportResult } from '../types'
 
 type SortKey = 'buyTime' | 'buyPrice' | 'sellPrice' | 'profit' | 'quantity'
 
@@ -44,13 +44,24 @@ const showBuyForm = ref(false)
 const editing = ref<Lot | null>(null)
 const sellTarget = ref<Lot | null>(null)
 const saving = ref(false)
-const confirmTarget = ref<Lot | null>(null)
 const searchEl = ref<HTMLInputElement | null>(null)
 const pendingOnly = ref(false)
 const highlightId = ref<number | null>(null)
 const route = useRoute()
 const alertsStore = useAlertsStore()
 const tab = ref<'lots' | 'alerts' | 'trash'>('lots')
+const page = ref(1)
+const pageSize = ref(50)
+const selectedIds = ref<number[]>([])
+const crossPageSelected = ref(false)
+const showAggregate = ref(false)
+const aggregateGroup = ref<'item' | 'category'>('item')
+const fillPriceDialog = ref<{ price: string } | null>(null)
+const fillPriceBusy = ref(false)
+const uuPreview = ref<UuFullJsonImportResult | null>(null)
+const pendingUuFile = ref<File | null>(null)
+const uuPreviewBusy = ref(false)
+const batchBusy = ref(false)
 const alertItem = ref<Item | null>(null)
 const alertExterior = ref('')
 const alertPlatform = ref('uu')
@@ -70,6 +81,16 @@ const hasFilters = computed(() => {
   const customActive = range.value === 'custom' && (!!fromDate.value || !!toDate.value)
   return !!q.value || !!status.value || !!platform.value || pendingOnly.value || range.value === '7' || range.value === '30' || customActive
 })
+
+const totalPages = computed(() => store.lotsPage?.totalPages ?? 1)
+const totalCount = computed(() => store.lotsPage?.total ?? store.lots.length)
+const pageItems = computed(() => store.lotsPage?.items ?? store.lots)
+const allPageSelected = computed(() =>
+  pageItems.value.length > 0 && pageItems.value.every(l => selectedIds.value.includes(l.id)))
+const somePageSelected = computed(() =>
+  pageItems.value.some(l => selectedIds.value.includes(l.id)) && !allPageSelected.value)
+const selectionCount = computed(() =>
+  crossPageSelected.value ? totalCount.value : selectedIds.value.length)
 
 const sortedLots = computed(() => {
   let arr = [...store.lots]
@@ -106,7 +127,18 @@ function buildQuery(): Record<string, string> {
 }
 
 async function refreshAll() {
-  await Promise.all([store.loadLots(buildQuery()), store.loadSummary()])
+  await Promise.all([
+    store.loadLotsPage({ ...buildQuery(), page: page.value, size: pageSize.value }),
+    store.loadSummary(),
+    store.loadStats(),
+    store.loadAggregate(aggregateGroup.value),
+    store.loadTrash()
+  ])
+}
+
+function refreshWithReset() {
+  page.value = 1
+  refreshAll()
 }
 
 function resetFilters() {
@@ -117,7 +149,120 @@ function resetFilters() {
   range.value = 'all'
   fromDate.value = ''
   toDate.value = ''
+  page.value = 1
+  selectedIds.value = []
+  crossPageSelected.value = false
   refreshAll()
+}
+
+function goPage(next: number) {
+  if (next < 1 || next > totalPages.value) return
+  page.value = next
+  refreshAll()
+}
+
+function changePageSize(size: number) {
+  pageSize.value = size
+  page.value = 1
+  refreshAll()
+}
+
+function toggleSelect(id: number) {
+  if (crossPageSelected.value) {
+    crossPageSelected.value = false
+    selectedIds.value = pageItems.value.map(l => l.id)
+  }
+  selectedIds.value = selectedIds.value.includes(id)
+    ? selectedIds.value.filter(v => v !== id)
+    : [...selectedIds.value, id]
+}
+
+function toggleSelectAll() {
+  if (allPageSelected.value || somePageSelected.value) {
+    selectedIds.value = selectedIds.value.filter(id => !pageItems.value.some(l => l.id === id))
+    crossPageSelected.value = false
+    return
+  }
+  selectedIds.value = [...new Set([...selectedIds.value, ...pageItems.value.map(l => l.id)])]
+}
+
+async function selectAllFiltered() {
+  const all = await store.loadLots(buildQuery())
+  const ids = all.map(l => l.id)
+  selectedIds.value = ids
+  crossPageSelected.value = ids.length > 0
+  ui.toast('info', crossPageSelected.value ? `已选中全部 ${ids.length} 条筛选结果` : '当前筛选无记录')
+}
+
+function clearSelection() {
+  selectedIds.value = []
+  crossPageSelected.value = false
+}
+
+function openFillPrice() {
+  fillPriceDialog.value = { price: '' }
+}
+
+async function confirmFillPrice() {
+  const dialog = fillPriceDialog.value
+  if (!dialog || fillPriceBusy.value) return
+  const price = Number(dialog.price)
+  if (!dialog.price || Number.isNaN(price) || price < 0) {
+    ui.toast('error', '请输入有效的买入价（≥ 0）')
+    return
+  }
+  fillPriceBusy.value = true
+  try {
+    const updated = await store.batchFillPrice(selectedIds.value, price)
+    ui.toast('success', `已为 ${updated} 条记录补填买入价 ${formatMoney(price)}`)
+    fillPriceDialog.value = null
+    clearSelection()
+    await refreshAll()
+  } catch (e) {
+    ui.toast('error', errorMessage(e))
+  } finally {
+    fillPriceBusy.value = false
+  }
+}
+
+async function batchExport(format: 'csv' | 'json' | 'xlsx') {
+  if (selectionCount.value === 0) return
+  batchBusy.value = true
+  try {
+    await store.exportLots(format, selectedIds.value)
+    ui.toast('info', `已导出选中的 ${selectionCount.value} 条记录（${format.toUpperCase()}）`)
+  } catch (e) {
+    ui.toast('error', errorMessage(e))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+async function requestBatchDelete() {
+  if (selectionCount.value === 0 || batchBusy.value) return
+  batchBusy.value = true
+  try {
+    const deleted = await store.batchDelete(selectedIds.value)
+    const ids = [...selectedIds.value]
+    clearSelection()
+    await refreshAll()
+    ui.toast('success', `已删除 ${deleted} 条记录，可在回收站恢复`, 8000, {
+      label: '撤销',
+      onClick: async () => {
+        try {
+          await Promise.all(ids.map(id => store.restoreLot(id)))
+          ui.toast('success', `已恢复 ${ids.length} 条记录`)
+          await refreshAll()
+        } catch (e) {
+          ui.toast('error', errorMessage(e))
+        }
+      }
+    })
+  } catch (e) {
+    ui.toast('error', errorMessage(e))
+  } finally {
+    batchBusy.value = false
+  }
 }
 
 function toggleSort(key: SortKey) {
@@ -174,18 +319,22 @@ async function onSellSaved(payload: LotSellRequest) {
   }
 }
 
-function requestDelete(lot: Lot) {
-  confirmTarget.value = lot
-}
-
-async function onConfirmDelete() {
-  const lot = confirmTarget.value
-  confirmTarget.value = null
-  if (!lot) return
+async function requestDelete(lot: Lot) {
   try {
     await store.deleteLot(lot.id)
-    ui.toast('success', '记录已删除')
     await refreshAll()
+    ui.toast('success', `「${lot.itemNameZh ?? lot.itemName}」已移入回收站`, 8000, {
+      label: '撤销',
+      onClick: async () => {
+        try {
+          await store.restoreLot(lot.id)
+          ui.toast('success', '记录已恢复')
+          await refreshAll()
+        } catch (e) {
+          ui.toast('error', errorMessage(e))
+        }
+      }
+    })
   } catch (e) {
     ui.toast('error', errorMessage(e))
   }
@@ -227,6 +376,7 @@ async function onWorkbookSelected(event: Event) {
     const result = await store.importWorkbook(file)
     ui.toast(result.failed ? 'info' : 'success', `Excel 导入完成：新增 ${result.created} 条，重复跳过 ${result.skipped} 条，失败 ${result.failed} 条`, 6500)
     if (result.errors.length) ui.toast('error', result.errors.slice(0, 3).join('；'), 8000)
+    await refreshAll()
   } catch (e) {
     ui.toast('error', errorMessage(e), 7000)
   } finally {
@@ -273,6 +423,21 @@ async function onUuJsonSelected(event: Event) {
     ui.toast('error', '请选择 JSON 文件')
     return
   }
+  uuPreviewBusy.value = true
+  try {
+    const result = await store.previewUuFullJson(file)
+    uuPreview.value = result
+    pendingUuFile.value = file
+  } catch (e) {
+    ui.toast('error', errorMessage(e), 7000)
+  } finally {
+    uuPreviewBusy.value = false
+  }
+}
+
+async function confirmImportUu() {
+  const file = pendingUuFile.value
+  if (!file || importingUu.value) return
   importingUu.value = true
   try {
     const result = await store.importUuFullJson(file)
@@ -286,11 +451,19 @@ async function onUuJsonSelected(event: Event) {
     if (result.errors.length > 0) {
       ui.toast('error', `${result.errors.length} 条记录导入失败，请查看后端日志`, 7000)
     }
+    uuPreview.value = null
+    pendingUuFile.value = null
+    await refreshAll()
   } catch (e) {
     ui.toast('error', errorMessage(e), 7000)
   } finally {
     importingUu.value = false
   }
+}
+
+function closeUuPreview() {
+  uuPreview.value = null
+  pendingUuFile.value = null
 }
 
 async function addAlert() {
@@ -340,6 +513,9 @@ function onGlobalKey(e: KeyboardEvent) {
 }
 
 function applyRouteTarget() {
+  if (route.query.new === '1') {
+    openCreate()
+  }
   const id = Number(route.query.lotId)
   if (id) {
     highlightId.value = id
@@ -403,8 +579,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
     </div>
 
     <div class="toolbar">
-      <input ref="searchEl" v-model="q" class="input search" placeholder="搜索饰品（中/英文）" @keyup.enter="refreshAll" />
-      <select v-model="status" class="select filter" @change="refreshAll">
+      <input ref="searchEl" v-model="q" class="input search" placeholder="搜索饰品（中/英文）" @keyup.enter="refreshWithReset" />
+      <select v-model="status" class="select filter" @change="refreshWithReset">
         <option value="">全部状态</option>
         <option value="HOLDING">持仓中</option>
         <option value="SOLD">已卖出</option>
@@ -413,9 +589,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
         type="button"
         class="chip"
         :class="{ active: pendingOnly }"
-        @click="pendingOnly = !pendingOnly; refreshAll()"
+        @click="pendingOnly = !pendingOnly; refreshWithReset()"
       >待补填买入价</button>
-      <select v-model="platform" class="select filter" @change="refreshAll">
+      <select v-model="platform" class="select filter" @change="refreshWithReset">
         <option value="">全部平台</option>
         <option value="steam">Steam</option>
         <option value="uu">UU</option>
@@ -429,17 +605,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
           type="button"
           class="chip"
           :class="{ active: range === r.v }"
-          @click="range = r.v; refreshAll()"
+          @click="range = r.v; refreshWithReset()"
         >{{ r.t }}</button>
         <template v-if="range === 'custom'">
-          <input v-model="fromDate" class="input date" type="date" @change="refreshAll" />
+          <input v-model="fromDate" class="input date" type="date" @change="refreshWithReset" />
           <span class="date-sep">至</span>
-          <input v-model="toDate" class="input date" type="date" @change="refreshAll" />
+          <input v-model="toDate" class="input date" type="date" @change="refreshWithReset" />
         </template>
       </div>
 
       <div class="spacer"></div>
 
+      <button type="button" class="btn btn-ghost btn-sm" :class="{ 'chip-active': showAggregate }" @click="showAggregate = !showAggregate">
+        {{ showAggregate ? '收起分组' : '分组汇总' }}
+      </button>
       <ColumnPicker v-model="lotVisibleColumns" :columns="LOT_COLUMNS" />
       <button type="button" class="btn btn-ghost btn-sm" title="下载标准 Excel 导入模板" @click="downloadTemplate">Excel 模板</button>
       <input ref="workbookFileEl" class="visually-hidden" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" @change="onWorkbookSelected" />
@@ -471,18 +650,72 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
       <button type="button" class="btn btn-sm" @click="refreshAll">重试</button>
     </div>
 
+    <div v-if="selectionCount > 0" class="selection-bar">
+      <span class="selection-count">已选 <b class="num">{{ selectionCount }}</b> 条<template v-if="crossPageSelected">（全部筛选结果）</template></span>
+      <button type="button" class="btn btn-sm" :disabled="batchBusy" @click="openFillPrice">批量补填买入价</button>
+      <span class="batch-export">
+        <button type="button" class="btn btn-sm" :disabled="batchBusy" @click="batchExport('csv')">导出 CSV</button>
+        <button type="button" class="btn btn-sm" :disabled="batchBusy" @click="batchExport('xlsx')">导出 Excel</button>
+        <button type="button" class="btn btn-sm" :disabled="batchBusy" @click="batchExport('json')">导出 JSON</button>
+      </span>
+      <button type="button" class="btn btn-danger btn-sm" :disabled="batchBusy" @click="requestBatchDelete">删除所选</button>
+      <span class="selection-spacer"></span>
+      <button type="button" class="btn btn-ghost btn-sm" :disabled="crossPageSelected" @click="selectAllFiltered">跨页全选</button>
+      <button type="button" class="btn btn-ghost btn-sm" @click="clearSelection">清除</button>
+    </div>
+
+    <div v-if="showAggregate" class="card aggregate-panel">
+      <div class="aggregate-head">
+        <h3>分组汇总</h3>
+        <div class="aggregate-tabs">
+          <button type="button" class="chip" :class="{ active: aggregateGroup === 'item' }" @click="aggregateGroup = 'item'; store.loadAggregate('item')">按单品</button>
+          <button type="button" class="chip" :class="{ active: aggregateGroup === 'category' }" @click="aggregateGroup = 'category'; store.loadAggregate('category')">按分类</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>名称</th><th class="num-head">已实现盈亏</th><th class="num-head">买入成本</th><th class="num-head">卖出笔数</th><th class="num-head">胜率</th></tr></thead>
+          <tbody>
+            <tr v-for="row in store.aggregate ?? []" :key="row.key">
+              <td class="agg-name" :title="row.key">{{ row.key }}</td>
+              <td class="num" :class="row.realizedPnl >= 0 ? 'up' : 'down'">{{ formatSignedMoney(row.realizedPnl) }}</td>
+              <td class="num">{{ formatMoney(row.buyCost) }}</td>
+              <td class="num">{{ row.soldCount }}</td>
+              <td class="num">{{ row.soldCount ? Math.round((row.winningSoldCount / row.soldCount) * 100) + '%' : '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="!store.loading && (store.aggregate ?? []).length === 0" class="empty-state compact"><p>暂无已实现盈亏数据。</p></div>
+    </div>
+
     <LotTable
       :lots="sortedLots"
-      :loading="store.loading"
+      :loading="store.loadingPage || store.loading"
       :sort-key="sortKey"
       :sort-dir="sortDir"
       :visible-columns="lotVisibleColumns"
       :highlight-id="highlightId"
+      :selected-ids="selectedIds"
       @edit="openEdit"
       @delete="requestDelete"
       @sell="sellTarget = $event"
       @sort="toggleSort"
+      @toggle-select="toggleSelect"
+      @toggle-select-all="toggleSelectAll"
     />
+
+    <div v-if="totalPages > 1 || totalCount > pageSize" class="pagination">
+      <span class="pagination-total">共 {{ totalCount }} 条</span>
+      <select v-model.number="pageSize" class="select page-size" @change="changePageSize(pageSize)">
+        <option :value="20">20 / 页</option>
+        <option :value="50">50 / 页</option>
+        <option :value="100">100 / 页</option>
+      </select>
+      <button type="button" class="btn btn-sm" :disabled="page <= 1" @click="goPage(page - 1)">‹ 上一页</button>
+      <span class="pagination-index num">{{ page }} / {{ totalPages }}</span>
+      <button type="button" class="btn btn-sm" :disabled="page >= totalPages" @click="goPage(page + 1)">下一页 ›</button>
+    </div>
 
     <div v-if="!store.loading && !store.error && store.lots.length === 0" class="empty-state">
       <div class="empty-icon" aria-hidden="true">{{ hasFilters ? '🔍' : '📦' }}</div>
@@ -494,15 +727,55 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 
     <LotForm v-if="showBuyForm" :editing="editing" :saving="saving" :attention="!!editing && editing.buyPrice === 0" @close="showBuyForm = false" @saved="onSaved" />
     <SellForm v-if="sellTarget" :lot="sellTarget" :saving="saving" @close="sellTarget = null" @saved="onSellSaved" />
-    <ConfirmDialog
-      v-if="confirmTarget"
-      title="删除记录"
-      :message="`将「${confirmTarget.itemNameZh ?? confirmTarget.itemName}」移入回收站？30 天内可恢复。`"
-      confirm-text="删除"
-      danger
-      @confirm="onConfirmDelete"
-      @cancel="confirmTarget = null"
-    />
+    <div v-if="fillPriceDialog" class="dialog-mask" @click.self="fillPriceDialog = null">
+      <section class="dialog-panel form-panel fill-price-panel" role="dialog" aria-modal="true" aria-label="批量补填买入价">
+        <form novalidate @submit.prevent="confirmFillPrice">
+          <div class="form-header"><h2>批量补填买入价</h2><button type="button" class="close-btn" aria-label="关闭" @click="fillPriceDialog = null">×</button></div>
+          <div class="fill-price-body">
+            <p class="fill-price-desc">将为选中的 <b>{{ selectionCount }}</b> 条记录统一填写买入价（单件单价，元）。已卖出的记录会同时重算盈亏。</p>
+            <label class="field"><span>买入价（元）</span><input v-model="fillPriceDialog.price" class="input num" type="number" step="0.01" min="0" placeholder="如 88.5" autofocus /></label>
+          </div>
+          <div class="form-actions">
+            <div class="actions-right">
+              <button type="button" class="btn" :disabled="fillPriceBusy" @click="fillPriceDialog = null">取消</button>
+              <button type="submit" class="btn btn-primary" :disabled="fillPriceBusy">{{ fillPriceBusy ? '保存中…' : '确认补填' }}</button>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+    <div v-if="uuPreview" class="dialog-mask" role="dialog" aria-modal="true" aria-labelledby="uu-preview-title" @click.self="closeUuPreview">
+      <section class="dialog-panel uu-guide">
+        <header class="guide-head">
+          <div>
+            <span class="guide-kicker">UU 增量比对</span>
+            <h2 id="uu-preview-title">导入前比对结果</h2>
+          </div>
+          <button type="button" class="guide-close" aria-label="关闭" @click="closeUuPreview">×</button>
+        </header>
+        <div class="preview-grid">
+          <div class="preview-stat"><span>新增持有</span><b class="num">{{ uuPreview.holdingsImported }}</b></div>
+          <div class="preview-stat"><span>重复跳过（持有）</span><b class="num muted">{{ uuPreview.holdingsSkippedDuplicates }}</b></div>
+          <div class="preview-stat"><span>新增卖出</span><b class="num">{{ uuPreview.salesImported }}</b></div>
+          <div class="preview-stat"><span>重复跳过（卖出）</span><b class="num muted">{{ uuPreview.salesSkippedDuplicates }}</b></div>
+          <div class="preview-stat"><span>未匹配卖出（买入价记 0）</span><b class="num warn">{{ uuPreview.unmatchedSales }}</b></div>
+          <div class="preview-stat"><span>忽略 / 无效记录</span><b class="num muted">{{ uuPreview.ignoredRecords }}</b></div>
+        </div>
+        <div v-if="uuPreview.warnings.length" class="preview-warnings">
+          <p v-for="(w, i) in uuPreview.warnings" :key="i">{{ w }}</p>
+        </div>
+        <div v-if="uuPreview.errors.length" class="preview-errors">
+          <p v-for="(e, i) in uuPreview.errors" :key="i">{{ e }}</p>
+        </div>
+        <footer class="guide-actions">
+          <span class="guide-spacer"></span>
+          <button type="button" class="btn" @click="closeUuPreview">取消</button>
+          <button type="button" class="btn btn-primary" :disabled="importingUu || (uuPreview.holdingsImported + uuPreview.salesImported) === 0" @click="confirmImportUu">
+            {{ importingUu ? '导入中…' : `确认导入 ${uuPreview.holdingsImported + uuPreview.salesImported} 条` }}
+          </button>
+        </footer>
+      </section>
+    </div>
     </div>
 
     <div v-show="tab === 'trash'">
@@ -624,7 +897,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .count { font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 8px; }
 .hint { float: right; font-size: 12px; color: var(--text-muted); font-weight: 400; }
-kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+kbd { font-family: var(--font-mono); background: var(--surface-muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
 .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
 .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
 .stat-label { font-size: 11px; color: var(--text-muted); }
@@ -649,6 +922,39 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .tab-btn { border: none; background: none; padding: 9px 14px; font-size: 13px; font-weight: 550; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.chip-active { border-color: var(--accent) !important; color: var(--accent) !important; }
+.selection-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 12px; margin-bottom: 12px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.selection-count { font-size: 13px; }
+.selection-count b { color: var(--accent); }
+.batch-export { display: inline-flex; gap: 4px; }
+.selection-spacer { flex: 1; }
+.aggregate-panel { padding: 14px 16px; margin-bottom: 14px; }
+.aggregate-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.aggregate-head h3 { margin: 0; font-size: 15px; }
+.aggregate-tabs { display: inline-flex; gap: 4px; }
+.aggregate-panel .table-wrap { border: 0; box-shadow: none; border-radius: 0; }
+.agg-name { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.pagination-total { font-size: 12px; color: var(--text-muted); margin-right: auto; }
+.page-size { width: auto; }
+.pagination-index { font-size: 13px; color: var(--text-secondary); min-width: 64px; text-align: center; }
+.fill-price-panel { max-width: 420px; }
+.fill-price-body { padding: 16px 20px 4px; }
+.fill-price-desc { margin: 0 0 14px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+.fill-price-desc b { color: var(--accent); }
+.preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 18px 22px 6px; }
+.preview-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-muted); }
+.preview-stat span { font-size: 11px; color: var(--text-muted); }
+.preview-stat b { font-size: 20px; font-weight: 650; }
+.preview-stat b.muted { color: var(--text-muted); }
+.preview-stat b.warn { color: #b45309; }
+.preview-warnings, .preview-errors { margin: 0 22px 6px; }
+.preview-warnings p, .preview-errors p { margin: 3px 0; font-size: 12px; color: var(--warn-text); }
+.preview-errors p { color: var(--danger); }
 .alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .alert-bar .item-select { flex: 1; min-width: 220px; }
 .danger-text { color: var(--danger) !important; }
@@ -665,7 +971,7 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
 .guide-steps li::before { counter-increment: guide; content: counter(guide); position: absolute; left: -36px; top: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
 .guide-steps b { font-size: 13px; }
 .guide-steps span { color: var(--text-secondary); font-size: 12px; }
-.guide-note { margin: 0 22px 18px; padding: 9px 11px; border: 1px solid #f5c77b; border-radius: var(--radius-sm); background: #fff7e6; color: #7a4f01; font-size: 11px; }
+.guide-note { margin: 0 22px 18px; padding: 9px 11px; border: 1px solid var(--warn-border); border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-text); font-size: 11px; }
 .guide-actions { display: flex; align-items: center; gap: 7px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--surface-muted); }
 .guide-spacer { flex: 1; }
 @media (max-width: 640px) {
@@ -674,6 +980,9 @@ kbd { font-family: var(--font-mono); background: #eef0f3; border: 1px solid var(
   .spacer { display: none; }
   .range-group { width: 100%; }
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  .pagination { justify-content: center; }
+  .pagination-total { width: 100%; text-align: center; margin-right: 0; }
+  .preview-grid { grid-template-columns: repeat(2, 1fr); }
   .guide-actions { align-items: stretch; flex-direction: column; }
   .guide-spacer { display: none; }
 }

@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, errorMessage } from '../api/client'
 import { downloadBlob } from '../utils/format'
-import type { Lot, LotCreateRequest, LotImportResult, LotSellRequest, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
+import type { AggregateRow, Lot, LotCreateRequest, LotImportResult, LotPage, LotSellRequest, LotStats, LotSummary, PnlRow, PortfolioValuation, PriceConfigView, PriceRefreshResult, UuFullJsonImportResult } from '../types'
 
 export interface LotQuery {
   q?: string
@@ -10,29 +10,52 @@ export interface LotQuery {
   platform?: string
   from?: string
   to?: string
+  page?: number
+  size?: number
 }
 
 export const useLotsStore = defineStore('lots', () => {
   const lots = ref<Lot[]>([])
+  const lotsPage = ref<LotPage | null>(null)
   const trash = ref<Lot[]>([])
   const summary = ref<LotSummary | null>(null)
+  const stats = ref<LotStats | null>(null)
+  const aggregate = ref<AggregateRow[] | null>(null)
   const pnlRows = ref<PnlRow[]>([])
   const loading = ref(false)
   const loadingSummary = ref(false)
   const loadingPnl = ref(false)
+  const loadingPage = ref(false)
   const error = ref('')
   const dashError = ref('')
 
-  async function loadLots(query: LotQuery = {}) {
+  async function loadLots(query: LotQuery = {}): Promise<Lot[]> {
     loading.value = true
     error.value = ''
+    let result: Lot[] = []
     try {
       const { data } = await api.get<Lot[]>('/lots', { params: query })
       lots.value = data
+      result = data
     } catch (e) {
       error.value = errorMessage(e)
     } finally {
       loading.value = false
+    }
+    return result
+  }
+
+  async function loadLotsPage(query: LotQuery = {}) {
+    loadingPage.value = true
+    error.value = ''
+    try {
+      const { data } = await api.get<LotPage>('/lots/page', { params: query })
+      lotsPage.value = data
+      lots.value = data.items
+    } catch (e) {
+      error.value = errorMessage(e)
+    } finally {
+      loadingPage.value = false
     }
   }
 
@@ -45,6 +68,24 @@ export const useLotsStore = defineStore('lots', () => {
       dashError.value = errorMessage(e)
     } finally {
       loadingSummary.value = false
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const { data } = await api.get<LotStats>('/lots/stats')
+      stats.value = data
+    } catch (e) {
+      dashError.value = errorMessage(e)
+    }
+  }
+
+  async function loadAggregate(groupBy: 'item' | 'category') {
+    try {
+      const { data } = await api.get<AggregateRow[]>('/lots/aggregate', { params: { group_by: groupBy } })
+      aggregate.value = data
+    } catch (e) {
+      dashError.value = errorMessage(e)
     }
   }
 
@@ -74,6 +115,18 @@ export const useLotsStore = defineStore('lots', () => {
 
   async function deleteLot(id: number) {
     await api.delete(`/lots/${id}`)
+  }
+
+  async function batchFillPrice(ids: number[], buyPrice: number): Promise<number> {
+    const { data } = await api.post<{ updated: number }>('/lots/batch/fill-price', { ids, buyPrice })
+    await Promise.all([loadSummary(), loadStats(), loadAggregate('item'), loadValuation()])
+    return data.updated
+  }
+
+  async function batchDelete(ids: number[]): Promise<number> {
+    const { data } = await api.post<{ deleted: number }>('/lots/batch/delete', { ids })
+    await Promise.all([loadSummary(), loadStats(), loadAggregate('item')])
+    return data.deleted
   }
 
   async function loadTrash() {
@@ -147,9 +200,9 @@ export const useLotsStore = defineStore('lots', () => {
     }
   }
 
-  async function exportLots(format: 'csv' | 'json' | 'xlsx') {
+  async function exportLots(format: 'csv' | 'json' | 'xlsx', ids?: number[]) {
     const { data } = await api.get<Blob>('/lots/export', {
-      params: { format },
+      params: ids && ids.length ? { format, ids: ids.join(',') } : { format },
       responseType: 'blob'
     })
     downloadBlob(data, `lots.${format === 'xlsx' ? 'xlsx' : format}`)
@@ -163,11 +216,20 @@ export const useLotsStore = defineStore('lots', () => {
     return data
   }
 
+  async function previewUuFullJson(file: File): Promise<UuFullJsonImportResult> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await api.post<UuFullJsonImportResult>('/sync/uu/preview-full-json', body)
+    return data
+  }
+
   return {
-    lots, trash, summary, pnlRows, loading, loadingSummary, loadingPnl, error, dashError,
+    lots, lotsPage, trash, summary, stats, aggregate, pnlRows,
+    loading, loadingPage, loadingSummary, loadingPnl, error, dashError,
     valuation, priceConfig, refreshingPrices, loadingValuation,
-    loadLots, loadTrash, loadSummary, loadPnl, createLot, updateLot, sellLot, deleteLot, restoreLot, purgeLot,
-    exportLots, downloadImportTemplate, importWorkbook, importUuFullJson,
+    loadLots, loadLotsPage, loadTrash, loadSummary, loadStats, loadAggregate,
+    loadPnl, createLot, updateLot, sellLot, deleteLot, batchFillPrice, batchDelete, restoreLot, purgeLot,
+    exportLots, downloadImportTemplate, importWorkbook, importUuFullJson, previewUuFullJson,
     loadValuation, loadPriceConfig, refreshPrices
   }
 })

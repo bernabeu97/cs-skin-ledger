@@ -45,6 +45,57 @@ public class UuImportService {
         return importDataForUser(req, currentUser.get());
     }
 
+    /** 预览：统计将新增 / 重复跳过 / 缺失饰品名称的数量，不写入任何数据。 */
+    @Transactional(readOnly = true)
+    public UuImportResult preview(UuImportRequest req) {
+        return previewForUser(req, currentUser.get());
+    }
+
+    /** 预览（显式用户）：不创建字典条目、不写库。 */
+    @Transactional(readOnly = true)
+    public UuImportResult previewForUser(UuImportRequest req, User user) {
+        List<String> errors = new ArrayList<>();
+        Long userId = user.getId();
+        int hReq = req.holdings() == null ? 0 : req.holdings().size();
+        int hImported = 0;
+        int hSkip = 0;
+        for (UuImportRequest.HoldingImport h : req.holdings() == null ? List.<UuImportRequest.HoldingImport>of() : req.holdings()) {
+            BigDecimal qty = h.quantity() == null ? BigDecimal.ONE : h.quantity();
+            String sourceRef = h.sourceRef() == null || h.sourceRef().isBlank()
+                    ? "imp:h:" + safe(h.itemName()) + ":" + safe(h.wear()) + ":" + qty.toPlainString() + ":" + safe(h.buyTime())
+                    : h.sourceRef().trim();
+            if (lotRepository.existsByUserIdAndSourceRef(userId, sourceRef)) {
+                hSkip++;
+                continue;
+            }
+            if ((h.itemName() == null || h.itemName().isBlank())
+                    && (h.itemNameZh() == null || h.itemNameZh().isBlank())) {
+                errors.add("持有记录缺少饰品名称");
+                continue;
+            }
+            hImported++;
+        }
+        int sReq = req.sales() == null ? 0 : req.sales().size();
+        int sImported = 0;
+        int sSkip = 0;
+        for (UuImportRequest.SaleImport s : req.sales() == null ? List.<UuImportRequest.SaleImport>of() : req.sales()) {
+            String sourceRef = s.sourceRef() == null || s.sourceRef().isBlank()
+                    ? "imp:s:" + safe(s.itemName()) + ":" + safe(s.wear()) + ":" + safe(s.sellTime())
+                    : s.sourceRef().trim();
+            if (lotRepository.existsByUserIdAndSourceRef(userId, sourceRef)) {
+                sSkip++;
+                continue;
+            }
+            if ((s.itemName() == null || s.itemName().isBlank())
+                    && (s.itemNameZh() == null || s.itemNameZh().isBlank())) {
+                errors.add("卖出记录缺少饰品名称");
+                continue;
+            }
+            sImported++;
+        }
+        return new UuImportResult(hReq, hImported, hSkip, sReq, sImported, sSkip, errors);
+    }
+
     /** 服务器维护任务使用：显式指定目标用户，不依赖浏览器登录态。 */
     @Transactional
     public UuImportResult importDataForUser(UuImportRequest req, User user) {

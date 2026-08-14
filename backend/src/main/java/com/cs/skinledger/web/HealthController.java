@@ -17,6 +17,9 @@ public class HealthController {
     @GetMapping
     public Map<String, String> health() {
         jdbc.queryForObject("SELECT 1", Integer.class);
-        return Map.of("status", "ok", "version", "0.2.0");
+        String version = getClass().getPackage() == null
+                ? null
+                : getClass().getPackage().getImplementationVersion();
+        return Map.of("status", "ok", "version", version == null || version.isBlank() ? "0.3.0" : version);
     }
 }

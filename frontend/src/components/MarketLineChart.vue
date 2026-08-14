@@ -4,6 +4,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useUiStore } from '../stores/ui'
 import type { PricePoint } from '../types'
 import { formatMoney } from '../utils/format'
 
@@ -20,6 +21,12 @@ const props = defineProps<{
 const el = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
+const ui = useUiStore()
+
+function cssVar(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
 
 function valueText(value: number) {
   return props.valueType === 'index' ? value.toFixed(2) : formatMoney(value)
@@ -34,30 +41,36 @@ function render() {
   }
   const first = props.points[0]?.value ?? 0
   const last = props.points[props.points.length - 1]?.value ?? first
-  const color = last >= first ? '#0b7a3b' : '#c62f3f'
+  const up = cssVar('--success', '#0b9a52')
+  const down = cssVar('--danger', '#d33c4b')
+  const muted = cssVar('--text-muted', '#8a91a0')
+  const border = cssVar('--border', '#eef0f3')
+  const surface = cssVar('--surface-solid', '#17181c')
+  const text = cssVar('--text', '#fff')
+  const color = last >= first ? up : down
   chart.setOption({
     animationDuration: 180,
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#17181c',
+      backgroundColor: surface,
       borderWidth: 0,
-      textStyle: { color: '#fff', fontSize: 12 },
+      textStyle: { color: text, fontSize: 12 },
       valueFormatter: (value: unknown) => valueText(Number(value))
     },
     grid: { left: 12, right: 18, top: 20, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
       boundaryGap: false,
-      axisLine: { lineStyle: { color: '#d0d5dd' } },
+      axisLine: { lineStyle: { color: border } },
       axisTick: { show: false },
-      axisLabel: { color: '#8a91a0', hideOverlap: true }
+      axisLabel: { color: muted, hideOverlap: true }
     },
     yAxis: {
       type: 'value',
       scale: true,
       splitNumber: 4,
-      splitLine: { lineStyle: { color: '#eef0f3' } },
-      axisLabel: { color: '#8a91a0', formatter: (value: number) => valueText(value) }
+      splitLine: { lineStyle: { color: border } },
+      axisLabel: { color: muted, formatter: (value: number) => valueText(value) }
     },
     series: [{
       name: props.valueType === 'index' ? '指数' : 'UU 价',
@@ -89,6 +102,7 @@ async function sync() {
 
 onMounted(sync)
 watch(() => [props.points, props.loading, props.title], sync, { deep: true, flush: 'post' })
+watch(() => ui.theme, sync)
 onBeforeUnmount(() => {
   observer?.disconnect()
   chart?.dispose()

@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -30,17 +32,25 @@ public class LotExportService {
     private final ObjectMapper objectMapper;
 
     public byte[] export(String format) throws IOException {
+        return export(format, Set.of());
+    }
+
+    public byte[] export(String format, Set<Long> ids) throws IOException {
+        Predicate<LotResponse> filter = ids.isEmpty()
+                ? lot -> true
+                : lot -> ids.contains(lot.id());
         return switch (format) {
-            case "json" -> objectMapper.writeValueAsBytes(lotService.list(null));
-            case "xlsx" -> exportXlsx();
-            default -> exportCsv();
+            case "json" -> objectMapper.writeValueAsBytes(
+                    lotService.list(null).stream().filter(filter).toList());
+            case "xlsx" -> exportXlsx(filter);
+            default -> exportCsv(filter);
         };
     }
 
-    private byte[] exportCsv() throws IOException {
+    private byte[] exportCsv(Predicate<LotResponse> filter) throws IOException {
         StringWriter out = new StringWriter();
         try (CSVPrinter printer = new CSVPrinter(out, CSVFormat.DEFAULT.builder().setHeader(HEADER).build())) {
-            for (LotResponse l : lotService.list(null)) {
+            for (LotResponse l : lotService.list(null).stream().filter(filter).toList()) {
                 printer.printRecord(
                         SpreadsheetCells.csv(l.itemNameZh() == null ? l.itemName() : l.itemNameZh()),
                         SpreadsheetCells.csv(l.exterior()), nz(l.floatValue()), l.quantity(),
@@ -53,7 +63,7 @@ public class LotExportService {
         return out.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private byte[] exportXlsx() throws IOException {
+    private byte[] exportXlsx(Predicate<LotResponse> filter) throws IOException {
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("lots");
             Row header = sheet.createRow(0);
@@ -61,7 +71,7 @@ public class LotExportService {
                 header.createCell(i).setCellValue(HEADER[i]);
             }
             int r = 1;
-            for (LotResponse l : lotService.list(null)) {
+            for (LotResponse l : lotService.list(null).stream().filter(filter).toList()) {
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(l.itemNameZh() == null ? l.itemName() : l.itemNameZh());
                 row.createCell(1).setCellValue(nz(l.exterior()));
